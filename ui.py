@@ -8,6 +8,7 @@ import time  # Zaman işlemleri için time modülünü ekledik
 import secrets  # Güvenli rastgele değer üretmek için
 import hashlib  # Şifreleme için
 import signal  # Sinyal işlemleri için
+import threading  # Arka planda düzenli kontrol için
 
 # ANSI renkli kodları temizleme fonksiyonu
 def strip_ansi_codes(text):
@@ -73,11 +74,18 @@ class ChatUI:
         self.api_salt = None
         self.api_provider = None
         
+        # Arka plan kontrolü için zamanlayıcı
+        self.timer = None
+        
         # Hugging Face Spaces için geçici dizin yapılandırması
         self.setup_temp_directory()
         
         # Sinyal yakalayıcıları ayarla
         self._setup_signal_handlers()
+        
+        # HuggingFace Space için düzenli kontrol mekanizmasını başlat
+        if os.environ.get('SPACE_ID'):
+            self._start_api_expiry_checker()
         
     def _setup_signal_handlers(self):
         """Uygulama kapatma sinyallerini yakalamak için sinyal işleyicileri ayarla"""
@@ -88,10 +96,29 @@ class ChatUI:
         except (AttributeError, ValueError) as e:
             print(f"Sinyal işleyicileri ayarlanamadı: {e}")
     
+    def _start_api_expiry_checker(self):
+        """API süresini düzenli olarak kontrol eden arka plan görevi"""
+        def check_api_expiry():
+            if self.api_expiry_time and time.time() > self.api_expiry_time and not self.is_api_expired:
+                print(f"Arka plan kontrolü: API süresi doldu! API bilgileri temizleniyor.")
+                self.clear_sensitive_data()
+            
+            # Her 60 saniyede bir kontrol et
+            self.timer = threading.Timer(60, check_api_expiry)
+            self.timer.daemon = True
+            self.timer.start()
+        
+        # İlk kontrolü başlat
+        check_api_expiry()
+    
     def _cleanup_on_exit(self, signum, frame):
         """Uygulama çıkışında tüm hassas verileri temizle"""
         print("Uygulama kapatılıyor, hassas veriler temizleniyor...")
         
+        # Timer'ı durdur
+        if self.timer:
+            self.timer.cancel()
+            
         # API anahtarlarını çevre değişkenlerinden temizle
         for key in ["OPENAI_API_KEY", "GEMINI_API_KEY"]:
             if key in os.environ:
@@ -109,13 +136,17 @@ class ChatUI:
     
     def clear_sensitive_data(self):
         """Hassas verileri manuel olarak temizle"""
+        print("API verileri manuel olarak temizleniyor...")
+        
         # API anahtarlarını çevre değişkenlerinden temizle
-        if "OPENAI_API_KEY" in os.environ:
-            del os.environ["OPENAI_API_KEY"]
-        if "GEMINI_API_KEY" in os.environ:
-            del os.environ["GEMINI_API_KEY"]
+        for key in ["OPENAI_API_KEY", "GEMINI_API_KEY"]:
+            if key in os.environ:
+                old_val = os.environ[key]
+                del os.environ[key]
+                print(f"{key} çevre değişkeninden silindi. Değer var mıydı: {'Evet' if old_val else 'Hayır'}")
         
         # Şifrelenmiş verileri sıfırla
+        old_key = self.encrypted_api_key
         self.encrypted_api_key = None
         self.api_salt = None
         self.api_provider = None
@@ -123,7 +154,25 @@ class ChatUI:
         self.is_api_expired = True
         self.agent = None
         
-        return "Tüm API verileri temizlendi. Lütfen yeniden API anahtarınızı girin."
+        print(f"Şifrelenmiş API bilgileri temizlendi. Değer var mıydı: {'Evet' if old_key else 'Hayır'}")
+        
+        # JavaScript ile API süre sayacını da sıfırla
+        api_reset_script = """
+        <script>
+        window.apiExpiryTime = 0;
+        if (window.updateApiExpiryTime) window.updateApiExpiryTime();
+        </script>
+        <div class="api-expiry-info"><p>⚠️ <strong>API anahtarınız temizlendi.</strong> Lütfen yeniden giriş yapın.</p></div>
+        """
+        
+        # Gradio bildirim metni oluştur
+        with gr.Blocks() as notification:
+            gr.Markdown(api_reset_script)
+            
+        return """⚠️ **API verileri güvenlik nedeniyle temizlendi.**
+
+Tüm API anahtarları ve hassas veriler sistemden silindi. 
+Asistanı tekrar kullanmak için lütfen yeniden API anahtarınızı girin."""
     
     def setup_temp_directory(self):
         """Hugging Face Spaces veya yerel ortam için geçici dizini yapılandırır"""
@@ -207,24 +256,37 @@ Hemen sorularınızı bekliyorum!
         if not self.agent:
             return history, "Lütfen önce API anahtarınızı girin ve AI asistanı başlatın.", "", None
         
-        # API süresini kontrol et
+        # API süresini kontrol et - Her istek işlenmeden önce kontrol ediliyor
         if self.api_expiry_time and time.time() > self.api_expiry_time:
             self.is_api_expired = True
+            print(f"API süresi doldu! Süre: {self.api_expiry_time}, Şu anki zaman: {time.time()}")
+            
             # API anahtarlarını çevre değişkenlerinden temizle
-            if "OPENAI_API_KEY" in os.environ:
-                del os.environ["OPENAI_API_KEY"]
-            if "GEMINI_API_KEY" in os.environ:
-                del os.environ["GEMINI_API_KEY"]
+            for key in ["OPENAI_API_KEY", "GEMINI_API_KEY"]:
+                if key in os.environ:
+                    old_val = os.environ[key]
+                    del os.environ[key]
+                    print(f"{key} çevre değişkeninden silindi. Değer var mıydı: {'Evet' if old_val else 'Hayır'}")
             
             # Şifrelenmiş API bilgilerini temizle
+            old_key = self.encrypted_api_key
             self.encrypted_api_key = None
             self.api_salt = None
             self.api_provider = None
+            self.api_expiry_time = None
+            
+            print(f"Şifrelenmiş API bilgileri temizlendi. Değer var mıydı: {'Evet' if old_key else 'Hayır'}")
             
             # Ajanı sıfırla
             self.agent = None
             
+            # Süresinin dolduğunu belirten mesajla geri dön
             return history, "Güvenlik nedeniyle API anahtarınızın süresi doldu. Lütfen tekrar API anahtarınızı girin.", "", None
+        
+        # API süresi halen geçerliyse kalan süreyi log'a yaz
+        if self.api_expiry_time:
+            kalan_sure = self.api_expiry_time - time.time()
+            print(f"API süre durumu: {kalan_sure:.1f} saniye kaldı.")
         
         if not message or message.strip() == "":
             return history, "Lütfen bir mesaj girin.", "", None
@@ -361,17 +423,28 @@ Hemen sorularınızı bekliyorum!
                 
                 # Hugging Face Spaces için dosya yolunu ayarla
                 if os.environ.get('SPACE_ID'):
-                    # Dosyayı public olarak erişilebilir yap - HF Spaces'te dosyalar zaten public
-                    # Excel dosya adını al
+                    # HF Spaces'te dosya yolunu oluştur
+                    space_id = os.environ.get('SPACE_ID')
+                    space_name = os.environ.get('SPACE_NAME', 'TrendyolAiScraper')
                     file_name = os.path.basename(file_path)
-                    display_path = file_path  # Hugging Face'te doğrudan dosya yolunu kullan
+                    
+                    # HF Spaces için doğru URL formatını oluştur
+                    # /jugurca/TrendyolAiScraper/file=/tmp/trendyol_scraper/filename.xlsx -> şeklini düzelt
+                    # Tüm yolu sabit formatta yap
+                    space_parts = space_id.split("/")
+                    username = space_parts[0] if "/" in space_id else space_id
+                    display_path = f"/file={file_path}"
+                    
+                    # Mesaja Excel linki ekle (eğer zaten yoksa)
+                    if "Excel dosyası" not in response_text and "İndirme Linki" not in response_text:
+                        response_text += f"\n\n**📥 İndirme Linki**: [Excel Dosyasını İndir]({display_path}) {file_size_info}"
                 else:
                     # Yerel ortamda tam dosya yolunu kullan
                     display_path = file_path
-                
-                # Mesaja Excel linki ekle (eğer zaten yoksa)
-                if "Excel dosyası" not in response_text and "İndirme Linki" not in response_text:
-                    response_text += f"\n\n**📥 İndirme Linki**: [Excel Dosyasını İndir]({display_path}) {file_size_info}"
+                    
+                    # Mesaja Excel linki ekle (eğer zaten yoksa)
+                    if "Excel dosyası" not in response_text and "İndirme Linki" not in response_text:
+                        response_text += f"\n\n**📥 İndirme Linki**: [Excel Dosyasını İndir]({display_path}) {file_size_info}"
             
             # Update chat history with proper message format
             self.chat_history.append({"role": "user", "content": message})
@@ -579,11 +652,16 @@ Hemen sorularınızı bekliyorum!
                 file_info_text = ""
                 
                 if download_visible:
+                    # Dosyayı doğrudan Gradio file_output bileşenine yükle
                     file_component = file_path
                     file_name = os.path.basename(file_path)
                     file_size_kb = os.path.getsize(file_path) / 1024
                     file_size_text = f"{file_size_kb:.1f} KB" if file_size_kb < 1024 else f"{file_size_kb/1024:.1f} MB"
-                    file_info_text = f"**📊 Excel Dosyası**: {file_name} ({file_size_text})"
+                    file_info_text = f"**📊 Excel Dosyası**: {file_name} ({file_size_text})\n\n"
+                    
+                    # Hugging Face'teyse ekstra uyarı ekle
+                    if os.environ.get('SPACE_ID'):
+                        file_info_text += "**⬇️ Aşağıdaki 'Download' butonuna tıklayarak Excel dosyasını indirebilirsiniz.**"
                 
                 return chat_result, error, msg_clear, gr.update(visible=download_visible), file_component, file_info_text
             
