@@ -4,12 +4,38 @@ import os
 import re
 import base64
 from urllib.parse import urlparse
+import time  # Zaman işlemleri için time modülünü ekledik
+import secrets  # Güvenli rastgele değer üretmek için
+import hashlib  # Şifreleme için
+import signal  # Sinyal işlemleri için
 
 # ANSI renkli kodları temizleme fonksiyonu
 def strip_ansi_codes(text):
     """ANSI renk kodlarını metinden temizler"""
     ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
     return ansi_escape.sub('', text)
+
+# API anahtarlarını şifrelemek ve şifresini çözmek için fonksiyonlar
+def encrypt_api_key(api_key, salt=None):
+    """API anahtarını geçici olarak hafızada şifreli saklamak için basit şifreleme"""
+    if not salt:
+        salt = secrets.token_hex(16)  # 16 baytlık rastgele salt oluştur
+    
+    # Salt ile birleştirip hash'le
+    key_bytes = api_key.encode('utf-8')
+    salt_bytes = salt.encode('utf-8')
+    hashed = hashlib.pbkdf2_hmac('sha256', key_bytes, salt_bytes, 100000)
+    
+    # Base64 ile kodla
+    encrypted = base64.b64encode(hashed).decode('utf-8')
+    return encrypted, salt
+
+def decrypt_api_key(encrypted_key, original_key, salt):
+    """Şifrelenmiş API anahtarının doğruluğunu kontrol etmek için"""
+    # Aynı tuz ile orijinal anahtarı şifrele
+    test_encrypted, _ = encrypt_api_key(original_key, salt)
+    # Eğer şifrelenmiş hali aynıysa doğrudur
+    return test_encrypted == encrypted_key
 
 # TeeStdOut sınıfı: Hem yakalamak hem de orijinal stdout'a yazdırmak için
 class TeeStdOut:
@@ -28,7 +54,7 @@ class TeeStdOut:
         self.captured_output.flush()
 
 class ChatUI:
-    def __init__(self, agent_creator_func: Callable, openai_models: Dict[str, str], gemini_models: Dict[str, str]):
+    def __init__(self, agent_creator_func: Callable, openai_models: Dict[str, str], gemini_models: Dict[str, str], api_expiry_minutes: int = 30):
         """Initialize the chat UI with a function that creates an agent with given API provider, key and model."""
         self.agent_creator_func = agent_creator_func
         self.agent = None
@@ -37,9 +63,68 @@ class ChatUI:
         self.gemini_models = gemini_models
         self.last_file_path = None
         
+        # API güvenliği için değişkenler ekledik
+        self.api_expiry_minutes = api_expiry_minutes  # API anahtarının geçerli olacağı süre (dakika)
+        self.api_expiry_time = None  # API anahtarının son kullanım zamanı
+        self.is_api_expired = True  # API'nin süresi doldu mu?
+        
+        # API güvenliği için şifreleme değişkenleri
+        self.encrypted_api_key = None
+        self.api_salt = None
+        self.api_provider = None
+        
         # Hugging Face Spaces için geçici dizin yapılandırması
         self.setup_temp_directory()
         
+        # Sinyal yakalayıcıları ayarla
+        self._setup_signal_handlers()
+        
+    def _setup_signal_handlers(self):
+        """Uygulama kapatma sinyallerini yakalamak için sinyal işleyicileri ayarla"""
+        # Windows için özellikle SIGINT (Ctrl+C) sinyalini yakala
+        try:
+            signal.signal(signal.SIGINT, self._cleanup_on_exit)
+            signal.signal(signal.SIGTERM, self._cleanup_on_exit)
+        except (AttributeError, ValueError) as e:
+            print(f"Sinyal işleyicileri ayarlanamadı: {e}")
+    
+    def _cleanup_on_exit(self, signum, frame):
+        """Uygulama çıkışında tüm hassas verileri temizle"""
+        print("Uygulama kapatılıyor, hassas veriler temizleniyor...")
+        
+        # API anahtarlarını çevre değişkenlerinden temizle
+        for key in ["OPENAI_API_KEY", "GEMINI_API_KEY"]:
+            if key in os.environ:
+                del os.environ[key]
+        
+        # Şifrelenmiş verileri sıfırla
+        self.encrypted_api_key = None
+        self.api_salt = None
+        self.api_provider = None
+        self.api_expiry_time = None
+        self.agent = None
+        
+        # Normal çıkış işlemini devam ettir
+        os._exit(0)
+    
+    def clear_sensitive_data(self):
+        """Hassas verileri manuel olarak temizle"""
+        # API anahtarlarını çevre değişkenlerinden temizle
+        if "OPENAI_API_KEY" in os.environ:
+            del os.environ["OPENAI_API_KEY"]
+        if "GEMINI_API_KEY" in os.environ:
+            del os.environ["GEMINI_API_KEY"]
+        
+        # Şifrelenmiş verileri sıfırla
+        self.encrypted_api_key = None
+        self.api_salt = None
+        self.api_provider = None
+        self.api_expiry_time = None
+        self.is_api_expired = True
+        self.agent = None
+        
+        return "Tüm API verileri temizlendi. Lütfen yeniden API anahtarınızı girin."
+    
     def setup_temp_directory(self):
         """Hugging Face Spaces veya yerel ortam için geçici dizini yapılandırır"""
         # Hugging Face Spaces ortamını kontrol et
@@ -60,14 +145,22 @@ class ChatUI:
             return "API anahtarı girmelisiniz!"
         
         try:
-            # API anahtarını ortam değişkeni olarak kaydetme (Hugging Face Spaces'te kalıcı olabiliyor)
-            # Bunun yerine sadece agent oluştururken parametreyi kullan
+            # API anahtarının şifrelenmiş halini ve tuz değerini sakla
+            self.encrypted_api_key, self.api_salt = encrypt_api_key(api_key)
             self.api_provider = api_provider
-            self.api_key = api_key
-            self.model_id = model_id
             
-            # Create the agent using the provided function - ortam değişkenini kullanmadan doğrudan aktarıyoruz
+            # Set the API key in environment variables based on provider
+            if api_provider == "openai":
+                os.environ["OPENAI_API_KEY"] = api_key
+            elif api_provider == "gemini":
+                os.environ["GEMINI_API_KEY"] = api_key
+            
+            # Create the agent using the provided function
             self.agent = self.agent_creator_func(api_provider, api_key, model_id)
+            
+            # API son kullanım süresini ayarla
+            self.api_expiry_time = time.time() + (self.api_expiry_minutes * 60)
+            self.is_api_expired = False
             
             # Initialize chat history with the welcome message
             welcome_message = """👋 Merhaba! Ben Trendyol Scraping Asistanınız. Size nasıl yardımcı olabilirim:
@@ -77,7 +170,9 @@ class ChatUI:
 ✅ **Trendyol mağaza linkinden** mağaza ürün verilerini toplayabilirim
 ✅ **Tüm çektiğim verileri Excel dosyası olarak** size sunabilirim
 
-Hemen sorularınızı bekliyorum!"""
+Hemen sorularınızı bekliyorum!
+
+⚠️ **Güvenlik Bilgisi**: API anahtarınız güvenlik amacıyla yalnızca {} dakika aktif kalacaktır. Süre dolduğunda tekrar girmeniz gerekecektir.""".format(self.api_expiry_minutes)
 
             # Clear any existing chat history
             self.chat_history = []
@@ -111,6 +206,25 @@ Hemen sorularınızı bekliyorum!"""
         """Process a user message and update the chat history."""
         if not self.agent:
             return history, "Lütfen önce API anahtarınızı girin ve AI asistanı başlatın.", "", None
+        
+        # API süresini kontrol et
+        if self.api_expiry_time and time.time() > self.api_expiry_time:
+            self.is_api_expired = True
+            # API anahtarlarını çevre değişkenlerinden temizle
+            if "OPENAI_API_KEY" in os.environ:
+                del os.environ["OPENAI_API_KEY"]
+            if "GEMINI_API_KEY" in os.environ:
+                del os.environ["GEMINI_API_KEY"]
+            
+            # Şifrelenmiş API bilgilerini temizle
+            self.encrypted_api_key = None
+            self.api_salt = None
+            self.api_provider = None
+            
+            # Ajanı sıfırla
+            self.agent = None
+            
+            return history, "Güvenlik nedeniyle API anahtarınızın süresi doldu. Lütfen tekrar API anahtarınızı girin.", "", None
         
         if not message or message.strip() == "":
             return history, "Lütfen bir mesaj girin.", "", None
@@ -302,12 +416,6 @@ Hemen sorularınızı bekliyorum!"""
         with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue", secondary_hue="indigo")) as demo:
             gr.Markdown("# AI Trendyol Scraping Asistanı")
             
-            # Sayfa yenilendiğinde uyarı mesajı ekle
-            gr.Markdown("""
-            ⚠️ **Önemli Bilgilendirme**: Sayfayı kapattığınızda veya yenilediğinizde API anahtarınız sıfırlanacaktır. 
-            Her oturumda API anahtarınızı yeniden girmeniz gerekecektir.
-            """, elem_id="session_warning")
-            
             with gr.Row():
                 with gr.Column(scale=2):
                     api_provider = gr.Radio(
@@ -343,18 +451,50 @@ Hemen sorularınızı bekliyorum!"""
                     )
                     
                     api_key_button = gr.Button("AI Asistanı Başlat", variant="primary")
+                    
+                    # Temizleme butonu ekle
+                    clear_data_button = gr.Button("Güvenlik - API Verilerini Temizle", variant="secondary")
             
             status_text = gr.Markdown("AI asistanı başlatmak için API sağlayıcınızı, modelinizi ve API anahtarınızı belirtin.")
             
-            # Define welcome message for later use
-            welcome_message = """👋 Merhaba! Ben Trendyol Scraping Asistanınız. Size nasıl yardımcı olabilirim:
-
-✅ **Trendyol'da keyword araması yapabilir** ve tüm ürün bilgilerini çekebilirim
-✅ **Trendyol ürün linkinden** yorumları veya soru-cevap çiftlerini toplayabilirim
-✅ **Trendyol mağaza linkinden** mağaza ürün verilerini toplayabilirim
-✅ **Tüm çektiğim verileri Excel dosyası olarak** size sunabilirim
-
-Hemen sorularınızı bekliyorum!"""
+            # API süre bilgisi
+            api_expiry_info = gr.Markdown("")
+            
+            # Düzenli olarak API süresini güncelleyecek JavaScript kodu
+            # JavaScript kodunu HTML olarak ekleyelim, demo.load ile değil
+            gr.HTML("""
+            <script>
+            function updateApiExpiryTime() {
+                if (window.apiExpiryInterval) {
+                    clearInterval(window.apiExpiryInterval);
+                }
+                
+                const apiExpiryEl = document.querySelector('.api-expiry-info');
+                if (!apiExpiryEl) return;
+                
+                window.apiExpiryInterval = setInterval(() => {
+                    const expiryTime = window.apiExpiryTime;
+                    if (!expiryTime) return;
+                    
+                    const now = Date.now() / 1000;
+                    const remainingSecs = Math.max(0, Math.floor(expiryTime - now));
+                    
+                    if (remainingSecs <= 0) {
+                        apiExpiryEl.innerHTML = "<p>⚠️ <strong>API anahtarınızın süresi doldu.</strong> Lütfen tekrar giriş yapın.</p>";
+                        clearInterval(window.apiExpiryInterval);
+                    } else {
+                        const mins = Math.floor(remainingSecs / 60);
+                        const secs = remainingSecs % 60;
+                        apiExpiryEl.innerHTML = `<p>⏱️ API anahtarınızın geçerlilik süresi: <strong>${mins}:${secs < 10 ? '0' + secs : secs}</strong></p>`;
+                    }
+                }, 1000);
+            }
+            
+            // Sayfa yüklendiğinde ve her API yenilemesinde zamanlayıcıyı başlat
+            document.addEventListener("DOMContentLoaded", updateApiExpiryTime);
+            </script>
+            <div class="api-expiry-info"></div>
+            """)
             
             chatbot = gr.Chatbot(
                 height=600,
@@ -400,19 +540,31 @@ Hemen sorularınızı bekliyorum!"""
             
             # Define callback for API key button
             def api_key_callback(provider, api_key, openai_model_val, gemini_model_val):
-                # Her API anahtarı girişinde eski oturum bilgilerini temizle
-                self.agent = None
-                self.chat_history = []
-                
                 model_id = openai_model_val if provider == "openai" else gemini_model_val
                 result = self.initialize_agent(provider, api_key, model_id)
+                
+                # API süre bilgisini güncelle - HTML çıktısı olarak
+                api_expiry_js = f"""
+                <script>
+                window.apiExpiryTime = {self.api_expiry_time if self.api_expiry_time else 0};
+                if (window.updateApiExpiryTime) window.updateApiExpiryTime();
+                </script>
+                """
+                
                 # Return both the status message and the chatbot with welcome message
-                return result, self.chat_history
+                return result, self.chat_history, api_expiry_js
             
             api_key_button.click(
                 api_key_callback,
                 [api_provider, api_key_input, openai_model, gemini_model],
-                [status_text, chatbot]
+                [status_text, chatbot, api_expiry_info]
+            )
+            
+            # Temizleme butonu işlevi
+            clear_data_button.click(
+                self.clear_sensitive_data,
+                [],
+                [status_text]
             )
             
             # Define callback for message submission
@@ -536,51 +688,6 @@ Hemen sorularınızı bekliyorum!"""
                     color: #666;
                 }
             </style>
-            """)
-            
-            # JavaScript - sayfa yüklendiğinde API anahtarı durumunu temizle
-            gr.HTML("""
-            <script>
-                // Sayfa yüklendiğinde tüm depolama alanlarını ve form bilgilerini temizle
-                function clearApiData() {
-                    // API anahtarı input alanını bul ve temizle
-                    const apiKeyInputs = document.querySelectorAll('input[type="password"]');
-                    apiKeyInputs.forEach(input => {
-                        input.value = '';
-                        // Input değerini değiştirdiğimizi Gradio'ya bildir
-                        const event = new Event('input', { bubbles: true });
-                        input.dispatchEvent(event);
-                    });
-                    
-                    // Tüm olası depolama mekanizmalarından API anahtarını temizle
-                    localStorage.clear();
-                    sessionStorage.clear();
-                    
-                    // Çerezleri temizle
-                    document.cookie.split(";").forEach(function(c) {
-                        document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-                    });
-                    
-                    console.log("API verileri temizlendi");
-                }
-                
-                // Sayfa yüklendiğinde çalıştır
-                document.addEventListener('DOMContentLoaded', function() {
-                    // Sayfa ilk yüklendiğinde temizlik yap
-                    setTimeout(clearApiData, 300);
-                });
-                
-                // Sayfa kapatıldığında veya yenilendiğinde API durumunu sıfırla
-                window.addEventListener('beforeunload', function() {
-                    localStorage.clear();
-                    sessionStorage.clear();
-                });
-                
-                // Ekstra önlem: Her 30 dakikada bir konsola log yaz
-                setInterval(function() {
-                    console.log("Periyodik kontrol çalıştı: " + new Date().toLocaleTimeString());
-                }, 1800000); // 30 dakika
-            </script>
             """)
             
             # Özel footer ekle
