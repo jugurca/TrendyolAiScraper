@@ -76,7 +76,6 @@ def create_agent(api_provider: str, api_key: str, model_id: str):
         model = OpenAIServerModel(
             model_id=model_id,
             api_key=api_key,
-            system_prompt=custom_system_prompt
         )
     elif api_provider == "gemini" and HAS_GEMINI:
         # Gemini modelini yapılandır
