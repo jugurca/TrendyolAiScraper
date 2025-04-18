@@ -487,7 +487,7 @@ Hemen sorularınızı bekliyorum!
     def launch_ui(self, share=False):
         """Create and launch the Gradio UI with API key input."""
         with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue", secondary_hue="indigo")) as demo:
-            gr.Markdown("# AI Trendyol Scraping Asistanı")
+            gr.Markdown("# Trendyol Scraping Assistant")
             
             with gr.Row():
                 with gr.Column(scale=2):
@@ -696,13 +696,13 @@ Hemen sorularınızı bekliyorum!
             )
             
             # Sample questions for easy testing
-            with gr.Accordion("Örnek Sorular", open=True):
+            with gr.Accordion("Örnek Mesajlar", open=True):
                 sample_questions = [
-                    "ruj keywordundeki ürünleri çek",
+                    "makyaj kategorisindeki ürünleri çeker misin",
                     "Trendyolda akıllı saat araması yap ve tüm ürünleri çek",
-                    "https://www.trendyol.com/x/x-p-32041644 buradaki tüm yorumları çek",
-                    "https://www.trendyol.com/x/x-p-32041644 buradaki tüm soru cevapları çek",
-                    "https://www.trendyol.com/magaza/bershka-m-104961?sst=0 ürünleri çek",
+                    "https://www.trendyol.com/x/x-p-32041644 buradaki tüm yorumları çeker misin",
+                    "https://www.trendyol.com/x/x-p-32041644 ürün sorularını çeker misin",
+                    "https://www.trendyol.com/magaza/bershka-m-104961?sst=0 bu mağazadaki ürün bilgileri lazım",
                 ]
                 
                 for question in sample_questions:
