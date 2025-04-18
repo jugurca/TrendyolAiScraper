@@ -462,7 +462,7 @@ Hemen sorularınızı bekliyorum!"""
                     "Trendyolda akıllı saat araması yap ve tüm ürünleri çek",
                     "https://www.trendyol.com/x/x-p-32041644 buradaki tüm yorumları çek",
                     "https://www.trendyol.com/x/x-p-32041644 buradaki tüm soru cevapları çek",
-                    "https://www.trendyol.com/magaza/bershka-m-104961?sst=0 ürünleri çek",
+                    "https://www.trendyol.com/magaza/bershka-m-104961?sst=0 bu magazadaki tüm ürünleri çek",
                 ]
                 
                 for question in sample_questions:
@@ -477,7 +477,7 @@ Hemen sorularınızı bekliyorum!"""
             if os.environ.get('SPACE_ID'):
                 gr.Markdown("""
                 ### 📢 Hugging Face Spaces Bilgilendirmesi
-                Bu uygulama Hugging Face Spaces üzerinde çalışıyor. Excel dosyalarını indirmek için dosya linki üzerine tıklayabilirsiniz.
+                Bu uygulama Hugging Face Spaces üzerinde çalışıyor. Excel dosyalarını indirmek için dosya boyutu belirtilen yerin üzerine tıklayabilirsiniz.
                 
                 ⚠️ **Bilgilendirme:** Tüm excel dosyaları geçici olarak saklanır ve Hugging Face Spaces'in sınırları dahilinde çalışır.
                 """)
