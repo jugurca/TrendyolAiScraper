@@ -60,13 +60,13 @@ class ChatUI:
             return "API anahtarı girmelisiniz!"
         
         try:
-            # Set the API key in environment variables based on provider
-            if api_provider == "openai":
-                os.environ["OPENAI_API_KEY"] = api_key
-            elif api_provider == "gemini":
-                os.environ["GEMINI_API_KEY"] = api_key
+            # API anahtarını ortam değişkeni olarak kaydetme (Hugging Face Spaces'te kalıcı olabiliyor)
+            # Bunun yerine sadece agent oluştururken parametreyi kullan
+            self.api_provider = api_provider
+            self.api_key = api_key
+            self.model_id = model_id
             
-            # Create the agent using the provided function
+            # Create the agent using the provided function - ortam değişkenini kullanmadan doğrudan aktarıyoruz
             self.agent = self.agent_creator_func(api_provider, api_key, model_id)
             
             # Initialize chat history with the welcome message
@@ -302,6 +302,12 @@ Hemen sorularınızı bekliyorum!"""
         with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue", secondary_hue="indigo")) as demo:
             gr.Markdown("# AI Trendyol Scraping Asistanı")
             
+            # Sayfa yenilendiğinde uyarı mesajı ekle
+            gr.Markdown("""
+            ⚠️ **Önemli Bilgilendirme**: Sayfayı kapattığınızda veya yenilediğinizde API anahtarınız sıfırlanacaktır. 
+            Her oturumda API anahtarınızı yeniden girmeniz gerekecektir.
+            """, elem_id="session_warning")
+            
             with gr.Row():
                 with gr.Column(scale=2):
                     api_provider = gr.Radio(
@@ -462,7 +468,7 @@ Hemen sorularınızı bekliyorum!"""
                     "Trendyolda akıllı saat araması yap ve tüm ürünleri çek",
                     "https://www.trendyol.com/x/x-p-32041644 buradaki tüm yorumları çek",
                     "https://www.trendyol.com/x/x-p-32041644 buradaki tüm soru cevapları çek",
-                    "https://www.trendyol.com/magaza/bershka-m-104961?sst=0 bu magazadaki tüm ürünleri çek",
+                    "https://www.trendyol.com/magaza/bershka-m-104961?sst=0 ürünleri çek",
                 ]
                 
                 for question in sample_questions:
@@ -477,7 +483,7 @@ Hemen sorularınızı bekliyorum!"""
             if os.environ.get('SPACE_ID'):
                 gr.Markdown("""
                 ### 📢 Hugging Face Spaces Bilgilendirmesi
-                Bu uygulama Hugging Face Spaces üzerinde çalışıyor. Excel dosyalarını indirmek için dosya boyutu belirtilen yerin üzerine tıklayabilirsiniz.
+                Bu uygulama Hugging Face Spaces üzerinde çalışıyor. Excel dosyalarını indirmek için dosya linki üzerine tıklayabilirsiniz.
                 
                 ⚠️ **Bilgilendirme:** Tüm excel dosyaları geçici olarak saklanır ve Hugging Face Spaces'in sınırları dahilinde çalışır.
                 """)
@@ -526,6 +532,50 @@ Hemen sorularınızı bekliyorum!"""
                     color: #666;
                 }
             </style>
+            """)
+            
+            # JavaScript - sayfa yüklendiğinde API anahtarı durumunu temizle
+            gr.HTML("""
+            <script>
+                // Sayfa yüklendiğinde çalışacak kod
+                document.addEventListener('DOMContentLoaded', function() {
+                    // Gradio otomatik API anahtarı doldurmasını engelle
+                    setTimeout(function() {
+                        // API anahtarı input alanını bul ve içeriğini temizle
+                        const apiKeyInputs = document.querySelectorAll('input[type="password"]');
+                        apiKeyInputs.forEach(input => {
+                            input.value = '';
+                            // Input değerini değiştirdiğimizi Gradio'ya bildir
+                            const event = new Event('input', { bubbles: true });
+                            input.dispatchEvent(event);
+                        });
+                        
+                        console.log("Sayfa yüklendi, API anahtarı formu temizlendi.");
+                    }, 500);
+                });
+                
+                // Sayfa kapatıldığında veya yenilendiğinde API durumunu sıfırla
+                window.addEventListener('beforeunload', function() {
+                    // Sessionda kalabilen API anahtarı varsa temizle
+                    sessionStorage.removeItem('api_key_state');
+                    console.log("Sayfa kapatılıyor, API durumu sıfırlandı.");
+                });
+                
+                // Sayfa her yüklendiğinde otomatik olarak API durumunu kontrol et
+                (function checkApiKeyState() {
+                    // Sayfa açıldığında durum mesajını kontrol et ve taze sayfa olduğuna emin ol
+                    setTimeout(function() {
+                        const statusElements = document.querySelectorAll('.prose p, .prose');
+                        statusElements.forEach(el => {
+                            // Eğer API zaten yüklenmiş görünüyorsa, sayfayı tazele
+                            if (el.textContent && el.textContent.includes("AI asistan başarıyla başlatıldı")) {
+                                console.log("Yüklü API durumu tespit edildi, sayfa yenileniyor.");
+                                window.location.reload();
+                            }
+                        });
+                    }, 1000);
+                })();
+            </script>
             """)
             
             # Özel footer ekle
