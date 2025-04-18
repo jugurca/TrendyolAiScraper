@@ -560,21 +560,6 @@ Hemen sorularınızı bekliyorum!"""
                     sessionStorage.removeItem('api_key_state');
                     console.log("Sayfa kapatılıyor, API durumu sıfırlandı.");
                 });
-                
-                // Sayfa her yüklendiğinde otomatik olarak API durumunu kontrol et
-                (function checkApiKeyState() {
-                    // Sayfa açıldığında durum mesajını kontrol et ve taze sayfa olduğuna emin ol
-                    setTimeout(function() {
-                        const statusElements = document.querySelectorAll('.prose p, .prose');
-                        statusElements.forEach(el => {
-                            // Eğer API zaten yüklenmiş görünüyorsa, sayfayı tazele
-                            if (el.textContent && el.textContent.includes("AI asistan başarıyla başlatıldı")) {
-                                console.log("Yüklü API durumu tespit edildi, sayfa yenileniyor.");
-                                window.location.reload();
-                            }
-                        });
-                    }, 1000);
-                })();
             </script>
             """)
             
