@@ -561,27 +561,12 @@ Hemen sorularınızı bekliyorum!"""
                         document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
                     });
                     
-                    // Gradio'nun durumunu sıfırlayan bir sorgu parametresi ekle
-                    if (!window.location.href.includes('reset=true')) {
-                        const separator = window.location.href.includes('?') ? '&' : '?';
-                        window.location.href = window.location.href + separator + 'reset=true';
-                    }
-                    
-                    console.log("API verileri temizlendi ve sayfa sıfırlandı");
+                    console.log("API verileri temizlendi");
                 }
                 
                 // Sayfa yüklendiğinde çalıştır
                 document.addEventListener('DOMContentLoaded', function() {
-                    // Sayfanın parametrelerini kontrol et
-                    const urlParams = new URLSearchParams(window.location.search);
-                    if (urlParams.has('reset')) {
-                        // URL'den reset parametresini temizle
-                        urlParams.delete('reset');
-                        const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
-                        window.history.replaceState({}, document.title, newUrl);
-                    }
-                    
-                    // Form alanlarını temizle
+                    // Sayfa ilk yüklendiğinde temizlik yap
                     setTimeout(clearApiData, 300);
                 });
                 
@@ -591,12 +576,9 @@ Hemen sorularınızı bekliyorum!"""
                     sessionStorage.clear();
                 });
                 
-                // Ekstra önlem: Her 30 dakikada bir form durumunu otomatik temizle
+                // Ekstra önlem: Her 30 dakikada bir konsola log yaz
                 setInterval(function() {
-                    const apiKeyInputs = document.querySelectorAll('input[type="password"]');
-                    if (apiKeyInputs.length > 0 && apiKeyInputs[0].value.trim() !== '') {
-                        console.log("Periyodik kontrol: API anahtarı hala mevcut, temizlenmiyor.");
-                    }
+                    console.log("Periyodik kontrol çalıştı: " + new Date().toLocaleTimeString());
                 }, 1800000); // 30 dakika
             </script>
             """)
