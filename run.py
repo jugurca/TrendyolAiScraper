@@ -111,7 +111,7 @@ def main():
     chat_ui = ChatUI(create_agent, openai_models=OPENAI_MODELS, gemini_models=GEMINI_MODELS, api_expiry_minutes=api_expiry_minutes)
     
     # Launch the UI - Hugging Face Spaces için share=True
-    demo = chat_ui.launch_ui(share=True)
+    demo = chat_ui.launch_ui()
     return demo
 
 if __name__ == "__main__":
