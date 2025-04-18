@@ -1,0 +1,28 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temp/cache directories
+.gradio/
+temp/
+*.xlsx
+*.csv
+*.json
+
+# Logs
+*.log
+
+# Cursor specific
+.cursorignore 
