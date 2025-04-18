@@ -400,6 +400,10 @@ Hemen sorularınızı bekliyorum!"""
             
             # Define callback for API key button
             def api_key_callback(provider, api_key, openai_model_val, gemini_model_val):
+                # Her API anahtarı girişinde eski oturum bilgilerini temizle
+                self.agent = None
+                self.chat_history = []
+                
                 model_id = openai_model_val if provider == "openai" else gemini_model_val
                 result = self.initialize_agent(provider, api_key, model_id)
                 # Return both the status message and the chatbot with welcome message
@@ -537,29 +541,63 @@ Hemen sorularınızı bekliyorum!"""
             # JavaScript - sayfa yüklendiğinde API anahtarı durumunu temizle
             gr.HTML("""
             <script>
-                // Sayfa yüklendiğinde çalışacak kod
+                // Sayfa yüklendiğinde tüm depolama alanlarını ve form bilgilerini temizle
+                function clearApiData() {
+                    // API anahtarı input alanını bul ve temizle
+                    const apiKeyInputs = document.querySelectorAll('input[type="password"]');
+                    apiKeyInputs.forEach(input => {
+                        input.value = '';
+                        // Input değerini değiştirdiğimizi Gradio'ya bildir
+                        const event = new Event('input', { bubbles: true });
+                        input.dispatchEvent(event);
+                    });
+                    
+                    // Tüm olası depolama mekanizmalarından API anahtarını temizle
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    
+                    // Çerezleri temizle
+                    document.cookie.split(";").forEach(function(c) {
+                        document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+                    });
+                    
+                    // Gradio'nun durumunu sıfırlayan bir sorgu parametresi ekle
+                    if (!window.location.href.includes('reset=true')) {
+                        const separator = window.location.href.includes('?') ? '&' : '?';
+                        window.location.href = window.location.href + separator + 'reset=true';
+                    }
+                    
+                    console.log("API verileri temizlendi ve sayfa sıfırlandı");
+                }
+                
+                // Sayfa yüklendiğinde çalıştır
                 document.addEventListener('DOMContentLoaded', function() {
-                    // Gradio otomatik API anahtarı doldurmasını engelle
-                    setTimeout(function() {
-                        // API anahtarı input alanını bul ve içeriğini temizle
-                        const apiKeyInputs = document.querySelectorAll('input[type="password"]');
-                        apiKeyInputs.forEach(input => {
-                            input.value = '';
-                            // Input değerini değiştirdiğimizi Gradio'ya bildir
-                            const event = new Event('input', { bubbles: true });
-                            input.dispatchEvent(event);
-                        });
-                        
-                        console.log("Sayfa yüklendi, API anahtarı formu temizlendi.");
-                    }, 500);
+                    // Sayfanın parametrelerini kontrol et
+                    const urlParams = new URLSearchParams(window.location.search);
+                    if (urlParams.has('reset')) {
+                        // URL'den reset parametresini temizle
+                        urlParams.delete('reset');
+                        const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+                        window.history.replaceState({}, document.title, newUrl);
+                    }
+                    
+                    // Form alanlarını temizle
+                    setTimeout(clearApiData, 300);
                 });
                 
                 // Sayfa kapatıldığında veya yenilendiğinde API durumunu sıfırla
                 window.addEventListener('beforeunload', function() {
-                    // Sessionda kalabilen API anahtarı varsa temizle
-                    sessionStorage.removeItem('api_key_state');
-                    console.log("Sayfa kapatılıyor, API durumu sıfırlandı.");
+                    localStorage.clear();
+                    sessionStorage.clear();
                 });
+                
+                // Ekstra önlem: Her 30 dakikada bir form durumunu otomatik temizle
+                setInterval(function() {
+                    const apiKeyInputs = document.querySelectorAll('input[type="password"]');
+                    if (apiKeyInputs.length > 0 && apiKeyInputs[0].value.trim() !== '') {
+                        console.log("Periyodik kontrol: API anahtarı hala mevcut, temizlenmiyor.");
+                    }
+                }, 1800000); // 30 dakika
             </script>
             """)
             
