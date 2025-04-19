@@ -260,7 +260,7 @@ Asistanı tekrar kullanmak için lütfen yeniden API anahtarınızı girin."""
 
 Hemen sorularınızı bekliyorum!
 
-⚠️ **Güvenlik Bilgisi**: API anahtarınız güvenlik amacıyla yalnızca {} dakika aktif kalacaktır. Süre dolduğunda veya sayfayı yenilemek gerekirse tekrar girmeniz gerekecektir.""".format(self.api_expiry_minutes)
+⚠️ **Güvenlik Bilgisi**: API anahtarınız güvenlik amacıyla yalnızca {} dakika aktif kalacaktır. Süre dolduğunda tekrar girmeniz gerekecektir.""".format(self.api_expiry_minutes)
 
             # Clear any existing chat history
             if session_state is not None:
@@ -585,7 +585,7 @@ Hemen sorularınızı bekliyorum!
             # API geri sayım zamanlayıcısı için state
             timer_state = gr.State({"timer_active": False, "expiry_time": 0})
             
-            gr.Markdown("# Trendyol Scraping Assistant")
+            gr.Markdown("# Trendyol Scraping Assistant Demo v1")
             
             with gr.Row():
                 with gr.Column(scale=2):
@@ -624,7 +624,7 @@ Hemen sorularınızı bekliyorum!
                     api_key_button = gr.Button("AI Asistanı Başlat", variant="primary")
                     
                     # Temizleme butonu ekle
-                    clear_data_button = gr.Button("Güvenlik - API Verilerini Temizle", variant="secondary")
+                    clear_data_button = gr.Button("API Verilerini Temizle", variant="secondary")
             
             status_text = gr.Markdown("AI asistanı başlatmak için API sağlayıcınızı, modelinizi ve API anahtarınızı belirtin.")
             
