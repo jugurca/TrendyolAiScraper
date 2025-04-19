@@ -875,7 +875,8 @@ Hemen sorularınızı bekliyorum!
                 Bu uygulama Hugging Face Spaces üzerinde çalışıyor. Excel dosyalarını indirmek için dosya linki üzerine tıklayabilirsiniz.
                 
                 ⚠️ **Bilgilendirme:** Tüm excel dosyaları geçici olarak saklanır ve Hugging Face Spaces'in sınırları dahilinde çalışır.
-                ⚠️ **Bilgilendirme:** [Ucretsiz Gemini API Key](https://aistudio.google.com/apikey).
+                
+                [Ucretsiz Gemini API Key](https://aistudio.google.com/apikey).
                 """)
             
             # CSS styles
