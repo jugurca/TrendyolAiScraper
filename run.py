@@ -73,13 +73,13 @@ def create_agent(api_provider: str, api_key: str, model_id: str):
     
     # Seçilen modele göre API yapılandırması
     if api_provider == "openai":
-        # OpenAI modelini yapılandır
+        # OpenAI modelini yapılandır - Doğrudan API anahtarını ileterek güvenli kullanım
         model = OpenAIServerModel(
             model_id=model_id,
             api_key=api_key,
         )
     elif api_provider == "gemini" and HAS_GEMINI:
-        # Gemini modelini yapılandır
+        # Gemini modelini yapılandır - Doğrudan API anahtarını ileterek güvenli kullanım
         model = LiteLLMModel(
             model_id=model_id,
             api_key=api_key,
@@ -88,22 +88,11 @@ def create_agent(api_provider: str, api_key: str, model_id: str):
     else:
         raise ValueError("Desteklenmeyen API sağlayıcısı veya Gemini modülleri yüklü değil")
     
-    # Initialize and return agent
+    # Initialize and return agent - Her kullanıcı için ayrı bir agent örneği
     return ToolCallingAgent(tools=tools, model=model)
-
-def cleanup_api_keys():
-    """Uygulama kapanırken API anahtarlarını ortam değişkenlerinden temizle"""
-    # API anahtarlarını ortam değişkenlerinden temizle
-    for key in ["OPENAI_API_KEY", "GEMINI_API_KEY"]:
-        if key in os.environ:
-            del os.environ[key]
-    print("API anahtarları güvenlik amacıyla temizlendi.")
 
 def main():
     """Main function to run the application."""
-    # Uygulama kapanırken API anahtarlarını temizleyecek fonksiyonu kaydet
-    atexit.register(cleanup_api_keys)
-    
     # API anahtarlarının geçerli olacağı süre (dakika)
     api_expiry_minutes = 30  # 30 dakika sonra API anahtarı geçersiz olacak
     
