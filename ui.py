@@ -96,6 +96,26 @@ class ChatUI:
         except (AttributeError, ValueError) as e:
             print(f"Sinyal işleyicileri ayarlanamadı: {e}")
     
+    def _start_api_expiry_checker(self):
+        """Hugging Face Spaces için API anahtar süresini arka planda düzenli olarak kontrol eden mekanizması"""
+        print("Hugging Face Spaces için API süresi kontrol mekanizması başlatılıyor...")
+        
+        # Bu metod sadece Hugging Face Spaces ortamında çağrılır
+        # API anahtarının süresini kontrol etmek için bir iş parçacığı oluştur
+        def check_api_expiry():
+            while True:
+                # 300 saniyede bir kontrol et
+                time.sleep(300)
+                
+                # API anahtarı süresi dolmuşsa, otomatik olarak temizle
+                if self.api_expiry_time and time.time() > self.api_expiry_time:
+                    print("Arka plan kontrolü: API süresi doldu! Otomatik temizleme yapılıyor...")
+                    self.clear_sensitive_data()
+        
+        # İş parçacığını başlat (daemon=True ile ana program kapandığında otomatik kapanır)
+        checker_thread = threading.Thread(target=check_api_expiry, daemon=True)
+        checker_thread.start()
+    
     def _cleanup_on_exit(self, signum, frame):
         """Uygulama çıkışında tüm hassas verileri temizle"""
         print("Uygulama kapatılıyor, hassas veriler temizleniyor...")
