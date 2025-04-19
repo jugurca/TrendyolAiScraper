@@ -58,21 +58,21 @@ class ChatUI:
     def __init__(self, agent_creator_func: Callable, openai_models: Dict[str, str], gemini_models: Dict[str, str], api_expiry_minutes: int = 30):
         """Initialize the chat UI with a function that creates an agent with given API provider, key and model."""
         self.agent_creator_func = agent_creator_func
-        self.agent = None
-        self.chat_history = []
+        self.agent = None  # Her oturum için agent SessionState'te saklanacak
+        self.chat_history = []  # Her oturum için sohbet geçmişi SessionState'te saklanacak
         self.openai_models = openai_models
         self.gemini_models = gemini_models
-        self.last_file_path = None
+        self.last_file_path = None  # Her oturum için son dosya yolu SessionState'te saklanacak
         
         # API güvenliği için değişkenler ekledik
         self.api_expiry_minutes = api_expiry_minutes  # API anahtarının geçerli olacağı süre (dakika)
-        self.api_expiry_time = None  # API anahtarının son kullanım zamanı
-        self.is_api_expired = True  # API'nin süresi doldu mu?
+        self.api_expiry_time = None  # Her oturum için son kullanım zamanı SessionState'te saklanacak
+        self.is_api_expired = True  # Her oturum için süre dolma durumu SessionState'te saklanacak
         
         # API güvenliği için şifreleme değişkenleri
-        self.encrypted_api_key = None
-        self.api_salt = None
-        self.api_provider = None
+        self.encrypted_api_key = None  # Her oturum için şifrelenmiş anahtar SessionState'te saklanacak
+        self.api_salt = None  # Her oturum için tuz değeri SessionState'te saklanacak
+        self.api_provider = None  # Her oturum için sağlayıcı bilgisi SessionState'te saklanacak
         
         # Arka plan kontrolü için zamanlayıcı
         self.timer = None
@@ -86,7 +86,7 @@ class ChatUI:
         # HuggingFace Space için düzenli kontrol mekanizmasını başlat
         if os.environ.get('SPACE_ID'):
             self._start_api_expiry_checker()
-        
+    
     def _setup_signal_handlers(self):
         """Uygulama kapatma sinyallerini yakalamak için sinyal işleyicileri ayarla"""
         # Windows için özellikle SIGINT (Ctrl+C) sinyalini yakala
@@ -96,45 +96,19 @@ class ChatUI:
         except (AttributeError, ValueError) as e:
             print(f"Sinyal işleyicileri ayarlanamadı: {e}")
     
-    def _start_api_expiry_checker(self):
-        """API süresini düzenli olarak kontrol eden arka plan görevi"""
-        def check_api_expiry():
-            if self.api_expiry_time and time.time() > self.api_expiry_time and not self.is_api_expired:
-                print(f"Arka plan kontrolü: API süresi doldu! API bilgileri temizleniyor.")
-                self.clear_sensitive_data()
-            
-            # Her 60 saniyede bir kontrol et
-            self.timer = threading.Timer(60, check_api_expiry)
-            self.timer.daemon = True
-            self.timer.start()
-        
-        # İlk kontrolü başlat
-        check_api_expiry()
-    
     def _cleanup_on_exit(self, signum, frame):
         """Uygulama çıkışında tüm hassas verileri temizle"""
         print("Uygulama kapatılıyor, hassas veriler temizleniyor...")
         
-        # Timer'ı durdur
-        if self.timer:
-            self.timer.cancel()
-            
         # API anahtarlarını çevre değişkenlerinden temizle
         for key in ["OPENAI_API_KEY", "GEMINI_API_KEY"]:
             if key in os.environ:
                 del os.environ[key]
         
-        # Şifrelenmiş verileri sıfırla
-        self.encrypted_api_key = None
-        self.api_salt = None
-        self.api_provider = None
-        self.api_expiry_time = None
-        self.agent = None
-        
         # Normal çıkış işlemini devam ettir
         os._exit(0)
     
-    def clear_sensitive_data(self):
+    def clear_sensitive_data(self, session_state=None):
         """Hassas verileri manuel olarak temizle"""
         print("API verileri manuel olarak temizleniyor...")
         
@@ -145,14 +119,32 @@ class ChatUI:
                 del os.environ[key]
                 print(f"{key} çevre değişkeninden silindi. Değer var mıydı: {'Evet' if old_val else 'Hayır'}")
         
-        # Şifrelenmiş verileri sıfırla
-        old_key = self.encrypted_api_key
-        self.encrypted_api_key = None
-        self.api_salt = None
-        self.api_provider = None
-        self.api_expiry_time = None
-        self.is_api_expired = True
-        self.agent = None
+        # Session state varsa, oturum değişkenlerini temizle
+        if session_state is not None:
+            old_key = session_state.get("encrypted_api_key")
+            if "encrypted_api_key" in session_state:
+                session_state["encrypted_api_key"] = None
+            if "api_salt" in session_state:
+                session_state["api_salt"] = None
+            if "api_provider" in session_state:
+                session_state["api_provider"] = None
+            if "api_expiry_time" in session_state:
+                session_state["api_expiry_time"] = None
+            if "is_api_expired" in session_state:
+                session_state["is_api_expired"] = True
+            if "agent" in session_state:
+                session_state["agent"] = None
+            if "api_key" in session_state:
+                session_state["api_key"] = None
+        else:
+            # Session state yoksa instance değişkenlerini temizle (eski davranış)
+            old_key = self.encrypted_api_key
+            self.encrypted_api_key = None
+            self.api_salt = None
+            self.api_provider = None
+            self.api_expiry_time = None
+            self.is_api_expired = True
+            self.agent = None
         
         print(f"Şifrelenmiş API bilgileri temizlendi. Değer var mıydı: {'Evet' if old_key else 'Hayır'}")
         
@@ -188,28 +180,55 @@ Asistanı tekrar kullanmak için lütfen yeniden API anahtarınızı girin."""
         os.makedirs(self.temp_dir, exist_ok=True)
         print(f"Geçici dosya dizini: {self.temp_dir}")
         
-    def initialize_agent(self, api_provider: str, api_key: str, model_id: str) -> str:
+    def initialize_agent(self, api_provider: str, api_key: str, model_id: str, session_state=None) -> str:
         """Initialize the agent with the provided API provider, key and model."""
         if not api_key or api_key.strip() == "":
             return "API anahtarı girmelisiniz!"
         
         try:
             # API anahtarının şifrelenmiş halini ve tuz değerini sakla
-            self.encrypted_api_key, self.api_salt = encrypt_api_key(api_key)
-            self.api_provider = api_provider
+            encrypted_api_key, api_salt = encrypt_api_key(api_key)
             
-            # Set the API key in environment variables based on provider
+            # Session state varsa, bu değerleri oturumda sakla
+            if session_state is not None:
+                session_state["encrypted_api_key"] = encrypted_api_key
+                session_state["api_salt"] = api_salt
+                session_state["api_provider"] = api_provider
+                session_state["api_key"] = api_key
+            else:
+                # Session state yoksa instance değişkenlerinde sakla (eski davranış)
+                self.encrypted_api_key = encrypted_api_key
+                self.api_salt = api_salt
+                self.api_provider = api_provider
+            
+            # Set the API key in environment variables based on provider (only for the current session)
+            # Not: Gerçek bir çok kullanıcılı ortamda bu değerler global olarak saklanmamalı
             if api_provider == "openai":
                 os.environ["OPENAI_API_KEY"] = api_key
             elif api_provider == "gemini":
                 os.environ["GEMINI_API_KEY"] = api_key
             
             # Create the agent using the provided function
-            self.agent = self.agent_creator_func(api_provider, api_key, model_id)
+            agent = self.agent_creator_func(api_provider, api_key, model_id)
+            
+            # Session state varsa, agent'i oturumda sakla
+            if session_state is not None:
+                session_state["agent"] = agent
+            else:
+                # Session state yoksa instance değişkeninde sakla (eski davranış)
+                self.agent = agent
             
             # API son kullanım süresini ayarla
-            self.api_expiry_time = time.time() + (self.api_expiry_minutes * 60)
-            self.is_api_expired = False
+            api_expiry_time = time.time() + (self.api_expiry_minutes * 60)
+            
+            # Session state varsa, son kullanım zamanını oturumda sakla
+            if session_state is not None:
+                session_state["api_expiry_time"] = api_expiry_time
+                session_state["is_api_expired"] = False
+            else:
+                # Session state yoksa instance değişkeninde sakla (eski davranış)
+                self.api_expiry_time = api_expiry_time
+                self.is_api_expired = False
             
             # Initialize chat history with the welcome message
             welcome_message = """👋 Merhaba! Ben Trendyol Scraping Asistanınız. Size nasıl yardımcı olabilirim:
@@ -221,12 +240,16 @@ Asistanı tekrar kullanmak için lütfen yeniden API anahtarınızı girin."""
 
 Hemen sorularınızı bekliyorum!
 
-⚠️ **Güvenlik Bilgisi**: API anahtarınız güvenlik amacıyla yalnızca {} dakika aktif kalacaktır. Süre dolduğunda tekrar girmeniz gerekecektir.""".format(self.api_expiry_minutes)
+⚠️ **Güvenlik Bilgisi**: API anahtarınız güvenlik amacıyla yalnızca {} dakika aktif kalacaktır. Süre dolduğunda veya sayfayı yenilemek gerekirse tekrar girmeniz gerekecektir.""".format(self.api_expiry_minutes)
 
             # Clear any existing chat history
-            self.chat_history = []
-            # Add the welcome message as an assistant message
-            self.chat_history.append({"role": "assistant", "content": welcome_message})
+            if session_state is not None:
+                session_state["chat_history"] = []
+                session_state["chat_history"].append({"role": "assistant", "content": welcome_message})
+            else:
+                # Session state yoksa instance değişkeninde sakla (eski davranış)
+                self.chat_history = []
+                self.chat_history.append({"role": "assistant", "content": welcome_message})
             
             return f"AI asistan başarıyla başlatıldı! ({api_provider.upper()} - {model_id}) Şimdi sohbet edebilirsiniz."
         except Exception as e:
@@ -248,18 +271,32 @@ Hemen sorularınızı bekliyorum!
             match = re.search(pattern, text)
             if match:
                 return match.group(1)
-        
+                
         return None
-        
-    def process_message(self, message: str, history) -> tuple:
+    
+    def process_message(self, message: str, history, session_state=None) -> tuple:
         """Process a user message and update the chat history."""
-        if not self.agent:
+        # Session state varsa, ondan değerleri al, yoksa instance değişkenlerini kullan
+        agent = session_state.get("agent", self.agent) if session_state is not None else self.agent
+        api_expiry_time = session_state.get("api_expiry_time", self.api_expiry_time) if session_state is not None else self.api_expiry_time
+        is_api_expired = session_state.get("is_api_expired", self.is_api_expired) if session_state is not None else self.is_api_expired
+        chat_history = session_state.get("chat_history", self.chat_history) if session_state is not None else self.chat_history
+        
+        if not agent:
             return history, "Lütfen önce API anahtarınızı girin ve AI asistanı başlatın.", "", None
         
         # API süresini kontrol et - Her istek işlenmeden önce kontrol ediliyor
-        if self.api_expiry_time and time.time() > self.api_expiry_time:
-            self.is_api_expired = True
-            print(f"API süresi doldu! Süre: {self.api_expiry_time}, Şu anki zaman: {time.time()}")
+        if api_expiry_time and time.time() > api_expiry_time:
+            # Session state varsa, sürenin dolduğunu oturumda işaretle
+            if session_state is not None:
+                session_state["is_api_expired"] = True
+                is_api_expired = True
+            else:
+                # Session state yoksa instance değişkeninde işaretle (eski davranış)
+                self.is_api_expired = True
+                is_api_expired = True
+                
+            print(f"API süresi doldu! Süre: {api_expiry_time}, Şu anki zaman: {time.time()}")
             
             # API anahtarlarını çevre değişkenlerinden temizle
             for key in ["OPENAI_API_KEY", "GEMINI_API_KEY"]:
@@ -269,30 +306,44 @@ Hemen sorularınızı bekliyorum!
                     print(f"{key} çevre değişkeninden silindi. Değer var mıydı: {'Evet' if old_val else 'Hayır'}")
             
             # Şifrelenmiş API bilgilerini temizle
-            old_key = self.encrypted_api_key
-            self.encrypted_api_key = None
-            self.api_salt = None
-            self.api_provider = None
-            self.api_expiry_time = None
+            if session_state is not None:
+                old_key = session_state.get("encrypted_api_key")
+                session_state["encrypted_api_key"] = None
+                session_state["api_salt"] = None
+                session_state["api_provider"] = None
+                session_state["api_expiry_time"] = None
+                session_state["agent"] = None
+            else:
+                # Session state yoksa instance değişkenlerini temizle (eski davranış)
+                old_key = self.encrypted_api_key
+                self.encrypted_api_key = None
+                self.api_salt = None
+                self.api_provider = None
+                self.api_expiry_time = None
+                self.agent = None
             
             print(f"Şifrelenmiş API bilgileri temizlendi. Değer var mıydı: {'Evet' if old_key else 'Hayır'}")
-            
-            # Ajanı sıfırla
-            self.agent = None
             
             # Süresinin dolduğunu belirten mesajla geri dön
             return history, "Güvenlik nedeniyle API anahtarınızın süresi doldu. Lütfen tekrar API anahtarınızı girin.", "", None
         
         # API süresi halen geçerliyse kalan süreyi log'a yaz
-        if self.api_expiry_time:
-            kalan_sure = self.api_expiry_time - time.time()
+        if api_expiry_time:
+            kalan_sure = api_expiry_time - time.time()
             print(f"API süre durumu: {kalan_sure:.1f} saniye kaldı.")
         
         if not message or message.strip() == "":
             return history, "Lütfen bir mesaj girin.", "", None
         
         if history:
-            self.chat_history = history
+            # Session state varsa, sohbet geçmişini oturumda sakla
+            if session_state is not None:
+                session_state["chat_history"] = history
+                chat_history = history
+            else:
+                # Session state yoksa instance değişkeninde sakla (eski davranış)
+                self.chat_history = history
+                chat_history = history
             
         # Run the agent
         try:
@@ -313,7 +364,7 @@ Hemen sorularınızı bekliyorum!
             sys.stderr = TeeStdOut(original_stderr, captured_output)
             
             try:
-                result = self.agent.run(message, reset=False)
+                result = agent.run(message, reset=False)
             finally:
                 # Her durumda orijinal çıktıları geri yükle
                 sys.stdout = original_stdout
@@ -415,7 +466,12 @@ Hemen sorularınızı bekliyorum!
             
             # Dosya yolunu sakla ve yanıta ekle
             if file_path and os.path.exists(file_path):
-                self.last_file_path = file_path
+                # Session state varsa, dosya yolunu oturumda sakla
+                if session_state is not None:
+                    session_state["last_file_path"] = file_path
+                else:
+                    # Session state yoksa instance değişkeninde sakla (eski davranış)
+                    self.last_file_path = file_path
                 
                 # Dosyanın büyüklüğünü kontrol et
                 file_size_kb = os.path.getsize(file_path) / 1024
@@ -447,10 +503,14 @@ Hemen sorularınızı bekliyorum!
                         response_text += f"\n\n**📥 İndirme Linki**: [Excel Dosyasını İndir]({display_path}) {file_size_info}"
             
             # Update chat history with proper message format
-            self.chat_history.append({"role": "user", "content": message})
-            self.chat_history.append({"role": "assistant", "content": response_text})
+            chat_history.append({"role": "user", "content": message})
+            chat_history.append({"role": "assistant", "content": response_text})
             
-            return self.chat_history, "", "", file_path
+            # Session state varsa, güncellenen sohbet geçmişini oturumda sakla
+            if session_state is not None:
+                session_state["chat_history"] = chat_history
+            
+            return chat_history, "", "", file_path
         except Exception as e:
             import traceback
             error_trace = traceback.format_exc()
@@ -459,23 +519,25 @@ Hemen sorularınızı bekliyorum!
             return history, error_message, message, None
     
     def extract_stats_from_output(self, output):
-        """Terminal çıktısından önemli istatistikleri çıkar"""
+        """
+        Çıktı içindeki önemli istatistikleri çıkarır
+        """
         stats = []
         
-        # Ürün sayısı
-        product_match = re.search(r'Toplam (\d+) ürün bulundu', output)
-        if product_match:
-            stats.append(f"Toplam ürün: {product_match.group(1)}")
+        # Toplam ürün sayısı
+        product_count_match = re.search(r'Toplam (\d+) ürün', output)
+        if product_count_match:
+            stats.append(f"Ürün sayısı: {product_count_match.group(1)}")
         
         # Yorum sayısı
-        comment_match = re.search(r'Toplam (\d+) yorum bulundu', output)
-        if comment_match:
-            stats.append(f"Toplam yorum: {comment_match.group(1)}")
+        comment_count_match = re.search(r'Toplam (\d+) yorum', output)
+        if comment_count_match:
+            stats.append(f"Yorum sayısı: {comment_count_match.group(1)}")
         
-        # Sayfa sayısı
-        page_match = re.search(r'(\d+) sayfa işlendi', output)
-        if page_match:
-            stats.append(f"İşlenen sayfa: {page_match.group(1)}")
+        # Soru sayısı
+        question_count_match = re.search(r'Toplam (\d+) soru', output)
+        if question_count_match:
+            stats.append(f"Soru sayısı: {question_count_match.group(1)}")
         
         # Tamamlanma yüzdesi
         progress_matches = re.findall(r'İşlem: (\d+)%', output)
@@ -487,6 +549,22 @@ Hemen sorularınızı bekliyorum!
     def launch_ui(self, share=False):
         """Create and launch the Gradio UI with API key input."""
         with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue", secondary_hue="indigo")) as demo:
+            # Session durumu
+            session_state = gr.State({
+                "encrypted_api_key": None,
+                "api_salt": None,
+                "api_provider": None,
+                "api_key": None,
+                "api_expiry_time": None,
+                "is_api_expired": True,
+                "agent": None,
+                "chat_history": [],
+                "last_file_path": None
+            })
+            
+            # API geri sayım zamanlayıcısı için state
+            timer_state = gr.State({"timer_active": False, "expiry_time": 0})
+            
             gr.Markdown("# Trendyol Scraping Assistant")
             
             with gr.Row():
@@ -530,44 +608,28 @@ Hemen sorularınızı bekliyorum!
             
             status_text = gr.Markdown("AI asistanı başlatmak için API sağlayıcınızı, modelinizi ve API anahtarınızı belirtin.")
             
-            # API süre bilgisi
-            api_expiry_info = gr.Markdown("")
+            # API süre bilgisi için HTML element yerine Gradio bileşeni kullanıyoruz
+            api_expiry_info = gr.Markdown("", visible=False)
             
-            # Düzenli olarak API süresini güncelleyecek JavaScript kodu
-            # JavaScript kodunu HTML olarak ekleyelim, demo.load ile değil
-            gr.HTML("""
-            <script>
-            function updateApiExpiryTime() {
-                if (window.apiExpiryInterval) {
-                    clearInterval(window.apiExpiryInterval);
-                }
+            # Zamanlayıcı fonksiyonu - her saniye çalışacak
+            def timer_tick(timer_data, session_data):
+                if not timer_data["timer_active"]:
+                    return None
                 
-                const apiExpiryEl = document.querySelector('.api-expiry-info');
-                if (!apiExpiryEl) return;
+                expiry_time = timer_data["expiry_time"]
+                if not expiry_time:
+                    return None
                 
-                window.apiExpiryInterval = setInterval(() => {
-                    const expiryTime = window.apiExpiryTime;
-                    if (!expiryTime) return;
-                    
-                    const now = Date.now() / 1000;
-                    const remainingSecs = Math.max(0, Math.floor(expiryTime - now));
-                    
-                    if (remainingSecs <= 0) {
-                        apiExpiryEl.innerHTML = "<p>⚠️ <strong>API anahtarınızın süresi doldu.</strong> Lütfen tekrar giriş yapın.</p>";
-                        clearInterval(window.apiExpiryInterval);
-                    } else {
-                        const mins = Math.floor(remainingSecs / 60);
-                        const secs = remainingSecs % 60;
-                        apiExpiryEl.innerHTML = `<p>⏱️ API anahtarınızın geçerlilik süresi: <strong>${mins}:${secs < 10 ? '0' + secs : secs}</strong></p>`;
-                    }
-                }, 1000);
-            }
-            
-            // Sayfa yüklendiğinde ve her API yenilemesinde zamanlayıcıyı başlat
-            document.addEventListener("DOMContentLoaded", updateApiExpiryTime);
-            </script>
-            <div class="api-expiry-info"></div>
-            """)
+                # Kalan süreyi hesapla
+                now = time.time()
+                remaining_secs = max(0, int(expiry_time - now))
+                
+                if remaining_secs <= 0:
+                    # Süre doldu mesajı - artık kullanıcıya gösterilmiyor
+                    return None
+                else:
+                    # Geri sayım mesajı - artık kullanıcıya gösterilmiyor
+                    return None
             
             chatbot = gr.Chatbot(
                 height=600,
@@ -612,39 +674,74 @@ Hemen sorularınızı bekliyorum!
             )
             
             # Define callback for API key button
-            def api_key_callback(provider, api_key, openai_model_val, gemini_model_val):
+            def api_key_callback(provider, api_key, openai_model_val, gemini_model_val, state, timer_data):
+                # API anahtarını ve modeli ayarla
                 model_id = openai_model_val if provider == "openai" else gemini_model_val
-                result = self.initialize_agent(provider, api_key, model_id)
+                result = self.initialize_agent(provider, api_key, model_id, state)
                 
-                # API süre bilgisini güncelle - HTML çıktısı olarak
-                api_expiry_js = f"""
-                <script>
-                window.apiExpiryTime = {self.api_expiry_time if self.api_expiry_time else 0};
-                if (window.updateApiExpiryTime) window.updateApiExpiryTime();
+                # Session state'ten sohbet geçmişini al
+                chat_history = state.get("chat_history", self.chat_history)
+                
+                # API süre bilgisini güncelle ve zamanlayıcıyı başlat
+                api_expiry_time = state.get("api_expiry_time", self.api_expiry_time)
+                
+                # Timer verisini güncelle
+                timer_data["timer_active"] = True
+                timer_data["expiry_time"] = api_expiry_time
+                
+                # API süresini konsola yazdır (debug amaçlı)
+                print(f"API expiry time set to: {api_expiry_time}")
+                
+                # API başlangıç mesajını göster
+                api_info_message = f"""<script>
+                // Global API süre değişkenlerini ayarla
+                window.apiExpiryTime = {api_expiry_time};
+                window.apiTimerActive = true;
+                console.log("API timer variables set:", window.apiExpiryTime);
                 </script>
                 """
                 
                 # Return both the status message and the chatbot with welcome message
-                return result, self.chat_history, api_expiry_js
+                return result, chat_history, api_info_message, timer_data
             
             api_key_button.click(
                 api_key_callback,
-                [api_provider, api_key_input, openai_model, gemini_model],
-                [status_text, chatbot, api_expiry_info]
+                [api_provider, api_key_input, openai_model, gemini_model, session_state, timer_state],
+                [status_text, chatbot, api_expiry_info, timer_state]
             )
             
             # Temizleme butonu işlevi
+            def clear_callback(state, timer_data):
+                # API verilerini temizle
+                result = self.clear_sensitive_data(state)
+                
+                # Zamanlayıcıyı durdur
+                timer_data["timer_active"] = False
+                timer_data["expiry_time"] = 0
+                
+                return result, timer_data, """<script>
+                // Timer'ı durdur
+                window.apiExpiryTime = 0;
+                window.apiTimerActive = false;
+                console.log("API timer stopped");
+                </script>
+                <div class="api-expiry-info warning">
+                    <p>⚠️ <strong>API verileriniz temizlendi.</strong> Lütfen yeniden giriş yapın.</p>
+                </div>"""
+            
             clear_data_button.click(
-                self.clear_sensitive_data,
-                [],
-                [status_text]
+                clear_callback,
+                [session_state, timer_state],
+                [status_text, timer_state, api_expiry_info]
             )
             
             # Define callback for message submission
-            def chat_callback(message, chat_history):
-                chat_result, error, msg_clear, file_path = self.process_message(message, chat_history)
+            def chat_callback(message, chat_history, state):
+                # Mesajı işle
+                chat_result, error, msg_clear, file_path = self.process_message(message, chat_history, state)
                 
                 # Excel dosyası var mı kontrol et
+                last_file_path = state.get("last_file_path", self.last_file_path) if state else self.last_file_path
                 download_visible = file_path is not None and os.path.exists(file_path)
                 
                 # Dosya yolu varsa, dosya bileşenini güncelle
@@ -666,34 +763,72 @@ Hemen sorularınızı bekliyorum!
                 return chat_result, error, msg_clear, gr.update(visible=download_visible), file_component, file_info_text
             
             # Dosya indirme butonu için callback
-            def download_file():
-                if self.last_file_path and os.path.exists(self.last_file_path):
-                    return self.last_file_path
+            def download_file(state):
+                # Session state'ten son dosya yolunu al
+                last_file_path = state.get("last_file_path", self.last_file_path) if state else self.last_file_path
+                if last_file_path and os.path.exists(last_file_path):
+                    return last_file_path
                 return None
             
             # Her iki gönderme yöntemi için aynı fonksiyonu kullan
-            submit_action = lambda message, chat_history: chat_callback(message, chat_history)
+            submit_action = lambda message, chat_history, state: chat_callback(message, chat_history, state)
             
             # Mesaj gönderme (enter tuşu)
             msg.submit(
                 submit_action,
-                [msg, chatbot],
+                [msg, chatbot, session_state],
                 [chatbot, error_box, msg, download_row, file_output, file_info]
             )
             
             # Mesaj gönderme (buton)
             submit_btn.click(
                 submit_action,
-                [msg, chatbot],
+                [msg, chatbot, session_state],
                 [chatbot, error_box, msg, download_row, file_output, file_info]
             )
             
             # Dosya indirme butonu
             download_button.click(
                 download_file,
-                [],
+                [session_state],
                 [file_output]
             )
+            
+            # JavaScript ile API zamanlayıcısı için kod ekle - sadece API süresini takip etmek için
+            timer_js = """
+            <script>
+            // Sayfa yüklendiğinde çalışacak fonksiyon
+            (function() {
+                console.log("Document loaded, setting up background API expiry timer");
+                
+                // Zamanlayıcı kontrolü - sadece arka planda çalışır, görsel element göstermez
+                function checkApiExpiry() {
+                    // Session bilgilerinden API süresini al (global olarak paylaşılıyor)
+                    var expiryTime = window.apiExpiryTime || 0;
+                    var isActive = window.apiTimerActive || false;
+                    
+                    if (!isActive || !expiryTime) {
+                        console.log("Timer not active or no expiry time set");
+                        return;
+                    }
+                    
+                    // Kalan süreyi hesapla
+                    var now = Math.floor(Date.now() / 1000);
+                    var remainingSecs = Math.max(0, Math.floor(expiryTime - now));
+                    
+                    // Süre dolmuşsa - konsola log
+                    if (remainingSecs <= 0) {
+                        console.log("API key expired");
+                    }
+                }
+                
+                // Zamanlayıcıyı başlat - sadece arka plan kontrolü
+                window.apiTimerInterval = setInterval(checkApiExpiry, 5000);
+            })();
+            </script>
+            """
+            
+            gr.HTML(timer_js)
             
             # Sample questions for easy testing
             with gr.Accordion("Örnek Mesajlar", open=True):
@@ -765,6 +900,35 @@ Hemen sorularınızı bekliyorum!
                     border-top: 1px solid #eee;
                     color: #666;
                 }
+                
+                .api-expiry-info {
+                    background-color: #e8f4ff;
+                    padding: 12px;
+                    border-radius: 5px;
+                    margin-bottom: 15px;
+                    margin-top: 15px;
+                    border-left: 5px solid #4c8bf5;
+                    font-weight: bold;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                }
+                
+                .api-expiry-info.warning {
+                    background-color: #fff8e8;
+                    border-left-color: #ff9800;
+                }
+                
+                .api-expiry-info p {
+                    margin: 0;
+                    color: #333;
+                    font-size: 15px;
+                    line-height: 1.5;
+                }
+                
+                .api-expiry-box {
+                    margin-top: 10px;
+                    margin-bottom: 10px;
+                    min-height: 60px;
+                }
             </style>
             """)
             
@@ -784,3 +948,4 @@ Hemen sorularınızı bekliyorum!
         # Demo'yu başlat - footer parametresi kaldırıldı çünkü mevcut Gradio sürümüyle uyumlu değil
         demo.launch(share=share, debug=False, show_api=False, show_error=True)
         return demo 
+
