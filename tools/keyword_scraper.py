@@ -26,15 +26,13 @@ class TrendyolKeywordScraper(Tool):
     
     def __init__(self):
         super().__init__()
-        # TrendyolBaseTool sınıfının fonksiyonlarını kullanmak için
-        # tools modülünden bu sınıfı lazy import ile alıyoruz
         from tools import TrendyolBaseTool
         self.base_tool = TrendyolBaseTool()
     
     async def fetch_page(self, client: httpx.AsyncClient, search_text: str, pi: int, semaphore) -> list:
         """Fetch a single page of product results for the given search term and page number."""
         async with semaphore:
-            # Sadece güncel API endpoint'ini kullan
+            
             api_url = os.getenv("trendyolkeyword")
             
             params = {
@@ -88,7 +86,6 @@ class TrendyolKeywordScraper(Tool):
             
     async def search_products(self, keyword: str) -> List[Dict]:
         """Search for products matching the given keyword."""
-        # Semaphore to limit concurrent requests
         semaphore = asyncio.Semaphore(30)
         all_products = []
         pi = 1
@@ -132,11 +129,9 @@ class TrendyolKeywordScraper(Tool):
         print(f"Excel dosyası oluşturuluyor ({len(products)} ürün)...")
         
         try:
-            # Create a dataframe from the products
             df_data = []
             for product in products:
                 try:
-                    # Ana ürün bilgileri
                     row = {
                         'Ürün ID': product.get('id', ''),
                         'Ürün Adı': product.get('name', ''),
@@ -145,12 +140,10 @@ class TrendyolKeywordScraper(Tool):
                         'Kategori Adı': product.get('categoryName', ''),
                     }
                     
-                    # Kategori hiyerarşisini işle
                     category_hierarchy = product.get('categoryHierarchy', '')
                     if isinstance(category_hierarchy, str):
                         row['Kategori Hiyerarşisi'] = category_hierarchy
                     elif isinstance(category_hierarchy, list):
-                        # Liste içindeki kategori nesnelerini işle
                         hierarchy_text = []
                         for cat in category_hierarchy:
                             if isinstance(cat, dict):
@@ -197,7 +190,6 @@ class TrendyolKeywordScraper(Tool):
                             additional_images.append(f"https://cdn.dsmcdn.com{img}")
                         row['Diğer Resimler'] = ', '.join(additional_images[:3])  # İlk 3 ilave resmi al
                     
-                    # Sosyal kanıt
                     social_proof = product.get('socialProof', {})
                     if social_proof:
                         # Sipariş sayısı
@@ -215,19 +207,16 @@ class TrendyolKeywordScraper(Tool):
                     print(f"Ürün işlenirken hata: {str(e)}")
                     continue
             
-            # Create DataFrame
             df = pd.DataFrame(df_data)
             
-            # Create Excel file in temp directory
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             safe_keyword = "".join(c if c.isalnum() else "_" for c in keyword[:30])
             filename = f"arama_{safe_keyword}_{timestamp}.xlsx"
             filepath = os.path.join(self.base_tool._temp_dir, filename)
             
-            # Save Excel to temp directory
             df.to_excel(filepath, index=False, engine='openpyxl')
             
-            # Geçici dosya olarak kaydet (30 dakika sonra otomatik silinecek)
+            # Geçici dosya olarak kaydet
             self.base_tool.register_temp_file(filepath, ttl_minutes=30)
             
             # JSON yedek olarak da kaydet
@@ -256,7 +245,6 @@ class TrendyolKeywordScraper(Tool):
         print(f"Trendyol ürün araması başlatılıyor: '{keyword}'")
         
         try:
-            # Search for products
             start_time = time.time()
             products = asyncio.run(self.search_products(keyword))
             end_time = time.time()
@@ -264,7 +252,6 @@ class TrendyolKeywordScraper(Tool):
             if not products:
                 return f"'{keyword}' için arama sonucunda ürün bulunamadı."
                 
-            # Convert products to Excel and get the filename
             excel_filename, excel_path = self.products_to_excel(products, keyword)
             
             if not excel_path:
@@ -371,7 +358,6 @@ class TrendyolKeywordScraper(Tool):
             
             result += f"\n**Dosya Adı**: {excel_filename}\n\n"
             
-            # Dosya indirme bağlantıları
             if os.environ.get('SPACE_ID'):
                 # Huggingface Spaces'te çalışıyorsa
                 space_name = os.environ.get('SPACE_ID')
@@ -379,7 +365,6 @@ class TrendyolKeywordScraper(Tool):
                 result += f"- [Excel İndir](/{space_name}/file={excel_path})\n\n"
                 result += "**NOT**: Dosyalar 30 dakika sonra otomatik olarak silinecektir. Lütfen bu süre içinde indirin."
             else:
-                # Yerel geliştirmede
                 result += f"**📥 İndirme Linkleri**:\n"
                 result += f"- [Excel İndir]({excel_path})\n\n"
                 result += "**NOT**: Dosyalar 30 dakika sonra otomatik olarak silinecektir."
