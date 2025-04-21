@@ -25,8 +25,6 @@ class TrendyolStoreScraper(Tool):
     
     def __init__(self):
         super().__init__()
-        # TrendyolBaseTool sınıfının fonksiyonlarını kullanmak için
-        # tools modülünden bu sınıfı lazy import ile alıyoruz
         from tools import TrendyolBaseTool
         self.base_tool = TrendyolBaseTool()
     
@@ -38,7 +36,6 @@ class TrendyolStoreScraper(Tool):
     async def fetch_page(self, client: httpx.AsyncClient, merchant_id: str, page: int, semaphore) -> List[Dict]:
         """Fetch a single page of products for the given merchant and page number."""
         async with semaphore:
-            # API endpoint for store products
             api_url = os.getenv("trendyolstore")
             
             params = {
@@ -95,14 +92,11 @@ class TrendyolStoreScraper(Tool):
         
         print(f"Mağaza ID {merchant_id} için ürün taraması başlatılıyor...")
         
-        # Create client
         async with httpx.AsyncClient(timeout=30) as client:
             while page < 100:  # Maksimum 100 sayfa ile sınırla
-                # Fetch multiple pages concurrently
                 tasks = [self.fetch_page(client, merchant_id, p, semaphore) for p in range(page, page + 30)]
                 results = await asyncio.gather(*tasks)
 
-                # Process results
                 new_data = []
                 for products in results:
                     if products == '404':
@@ -132,7 +126,6 @@ class TrendyolStoreScraper(Tool):
         print(f"Excel dosyası oluşturuluyor ({len(products)} ürün)...")
         
         try:
-            # Create a dataframe from the products
             df_data = []
             for product in products:
                 try:
@@ -188,7 +181,6 @@ class TrendyolStoreScraper(Tool):
                             additional_images.append(f"https://cdn.dsmcdn.com{img}")
                         row['Diğer Resimler'] = ', '.join(additional_images[:3])  # İlk 3 ilave resmi al
                     
-                    # Sosyal kanıt
                     social_proof = product.get('socialProof', {})
                     if social_proof:
                         # Sipariş sayısı
@@ -206,18 +198,15 @@ class TrendyolStoreScraper(Tool):
                     print(f"Ürün işlenirken hata: {str(e)}")
                     continue
             
-            # Create DataFrame
             df = pd.DataFrame(df_data)
             
-            # Create Excel file in temp directory
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"magaza_{merchant_id}_{timestamp}.xlsx"
             filepath = os.path.join(self.base_tool._temp_dir, filename)
             
-            # Save Excel to temp directory
             df.to_excel(filepath, index=False, engine='openpyxl')
             
-            # Geçici dosya olarak kaydet (30 dakika sonra otomatik silinecek)
+            # Geçici dosya olarak kaydet
             self.base_tool.register_temp_file(filepath, ttl_minutes=30)
             
             # Dosya URL'sini oluştur
@@ -238,7 +227,7 @@ class TrendyolStoreScraper(Tool):
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(products, f, ensure_ascii=False, indent=4)
         
-        # Geçici dosya olarak kaydet (30 dakika sonra otomatik silinecek)
+        # Geçici dosya olarak kaydet
         self.base_tool.register_temp_file(filepath, ttl_minutes=30)
         
         # Dosya URL'sini oluştur
@@ -263,7 +252,6 @@ class TrendyolStoreScraper(Tool):
         print(f"Trendyol mağaza taraması başlatılıyor: Mağaza ID {merchant_id}")
         
         try:
-            # Scrape products
             start_time = time.time()
             products = asyncio.run(self.scrape_store_products(merchant_id))
             end_time = time.time()
@@ -271,10 +259,9 @@ class TrendyolStoreScraper(Tool):
             if not products:
                 return f"Mağaza ID {merchant_id} için ürün bulunamadı."
                 
-            # Save to JSON file for backup
+            # JSON olarak kaydet
             json_filename, json_path = self.save_json_backup(products, merchant_id)
                 
-            # Convert products to Excel and get the filename
             excel_filename, excel_path = self.products_to_excel(products, merchant_id)
             
             if not excel_path:
@@ -357,7 +344,6 @@ class TrendyolStoreScraper(Tool):
             result += f"\n**Dosya Adı**: {excel_filename}\n"
             result += f"**JSON Yedek**: {json_filename}\n\n"
             
-            # Dosya indirme bağlantıları
             if os.environ.get('SPACE_ID'):
                 # Huggingface Spaces'te çalışıyorsa
                 space_name = os.environ.get('SPACE_ID')
