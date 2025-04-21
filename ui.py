@@ -157,7 +157,7 @@ class ChatUI:
             if "api_key" in session_state:
                 session_state["api_key"] = None
         else:
-            # Session state yoksa instance değişkenlerini temizle (eski davranış)
+            # Session state yoksa instance değişkenlerini temizle
             old_key = self.encrypted_api_key
             self.encrypted_api_key = None
             self.api_salt = None
@@ -216,26 +216,22 @@ Asistanı tekrar kullanmak için lütfen yeniden API anahtarınızı girin."""
                 session_state["api_provider"] = api_provider
                 session_state["api_key"] = api_key
             else:
-                # Session state yoksa instance değişkenlerinde sakla (eski davranış)
+                # Session state yoksa instance değişkenlerinde sakla
                 self.encrypted_api_key = encrypted_api_key
                 self.api_salt = api_salt
                 self.api_provider = api_provider
             
-            # Set the API key in environment variables based on provider (only for the current session)
-            # Not: Gerçek bir çok kullanıcılı ortamda bu değerler global olarak saklanmamalı
             if api_provider == "openai":
                 os.environ["OPENAI_API_KEY"] = api_key
             elif api_provider == "gemini":
                 os.environ["GEMINI_API_KEY"] = api_key
             
-            # Create the agent using the provided function
             agent = self.agent_creator_func(api_provider, api_key, model_id)
             
             # Session state varsa, agent'i oturumda sakla
             if session_state is not None:
                 session_state["agent"] = agent
             else:
-                # Session state yoksa instance değişkeninde sakla (eski davranış)
                 self.agent = agent
             
             # API son kullanım süresini ayarla
@@ -246,11 +242,9 @@ Asistanı tekrar kullanmak için lütfen yeniden API anahtarınızı girin."""
                 session_state["api_expiry_time"] = api_expiry_time
                 session_state["is_api_expired"] = False
             else:
-                # Session state yoksa instance değişkeninde sakla (eski davranış)
                 self.api_expiry_time = api_expiry_time
                 self.is_api_expired = False
             
-            # Initialize chat history with the welcome message
             welcome_message = """👋 Merhaba! Ben Trendyol Scraping Asistanınız. Size nasıl yardımcı olabilirim:
 
 ✅ **Trendyol'da keyword araması yapabilir** ve tüm ürün bilgilerini çekebilirim
@@ -262,12 +256,10 @@ Hemen sorularınızı bekliyorum!
 
 ⚠️ **Güvenlik Bilgisi**: API anahtarınız güvenlik amacıyla yalnızca {} dakika aktif kalacaktır. Süre dolduğunda tekrar girmeniz gerekecektir.""".format(self.api_expiry_minutes)
 
-            # Clear any existing chat history
             if session_state is not None:
                 session_state["chat_history"] = []
                 session_state["chat_history"].append({"role": "assistant", "content": welcome_message})
             else:
-                # Session state yoksa instance değişkeninde sakla (eski davranış)
                 self.chat_history = []
                 self.chat_history.append({"role": "assistant", "content": welcome_message})
             
@@ -504,8 +496,6 @@ Hemen sorularınızı bekliyorum!
                     space_name = os.environ.get('SPACE_NAME', 'TrendyolAiScraper')
                     file_name = os.path.basename(file_path)
                     
-                    # HF Spaces için doğru URL formatını oluştur
-                    # /jugurca/TrendyolAiScraper/file=/tmp/trendyol_scraper/filename.xlsx -> şeklini düzelt
                     # Tüm yolu sabit formatta yap
                     space_parts = space_id.split("/")
                     username = space_parts[0] if "/" in space_id else space_id
