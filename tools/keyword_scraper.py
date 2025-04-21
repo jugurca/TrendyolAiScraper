@@ -35,7 +35,7 @@ class TrendyolKeywordScraper(Tool):
         """Fetch a single page of product results for the given search term and page number."""
         async with semaphore:
             # Sadece güncel API endpoint'ini kullan
-            api_url = 'https://apigw.trendyol.com/discovery-web-searchgw-service/v2/api/infinite-scroll/sr'
+            api_url = os.getenv("trendyolkeyword")
             
             params = {
                 'q': search_text,
