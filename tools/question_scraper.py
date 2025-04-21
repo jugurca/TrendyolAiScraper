@@ -25,12 +25,9 @@ class TrendyolQuestionScraper(Tool):
     
     def __init__(self):
         super().__init__()
-        # TrendyolBaseTool sınıfının fonksiyonlarını kullanmak için
-        # tools modülünden bu sınıfı lazy import ile alıyoruz
         from tools import TrendyolBaseTool
         self.base_tool = TrendyolBaseTool()
     
-    # Function to extract content ID from the URL
     def extract_content_id(self, url: str) -> Optional[str]:
         match = re.search(r'p-(\d+)', url)
         if match:
@@ -38,7 +35,6 @@ class TrendyolQuestionScraper(Tool):
         else:
             return None
     
-    # Function to fetch product questions for a given page
     async def fetch_questions_page(self, client: httpx.AsyncClient, content_id: str, page: int, semaphore) -> List[Dict]:
         async with semaphore:
             params = {
@@ -69,7 +65,6 @@ class TrendyolQuestionScraper(Tool):
                 
                 if response.status_code == 200:
                     data = response.json()
-                    # Veri yapısı değişimi: result içinde doğrudan soru listesi geliyor olabilir
                     content = data.get('result', [])
                     if isinstance(content, dict):
                         content = content.get('content', [])
@@ -81,12 +76,10 @@ class TrendyolQuestionScraper(Tool):
                 return []
     
     async def scrape_questions(self, url: str):
-        # Extract content ID from URL
         content_id = self.extract_content_id(url)
         if content_id is None:
             return "Ürün ID'si URL'den çıkarılamadı. Lütfen geçerli bir Trendyol ürün URL'si girin."
             
-        # Semaphore to limit concurrent requests
         semaphore = asyncio.Semaphore(30)
         all_questions = []
         page = 0
@@ -101,15 +94,12 @@ class TrendyolQuestionScraper(Tool):
             'Referer': 'https://www.trendyol.com/'
         }
         
-        # Create client with headers
         async with httpx.AsyncClient(headers=headers) as client:
             while True:
                 try:
-                    # Fetch multiple pages concurrently
                     tasks = [self.fetch_questions_page(client, content_id, p, semaphore) for p in range(page, page + 30)]
                     results = await asyncio.gather(*tasks)
 
-                    # Flatten the results
                     new_data = [item for sublist in results if sublist for item in sublist]
 
                     if not new_data:
@@ -119,11 +109,11 @@ class TrendyolQuestionScraper(Tool):
                     all_questions.extend(new_data)
                     print(f"Pages {page}-{page+29}: Collected {len(new_data)} questions. Total: {len(all_questions)}")
                     
-                    if len(new_data) < 30 * 50:  # If we got less than the expected maximum
+                    if len(new_data) < 30 * 50: 
                         break
                         
                     page += 30
-                    await asyncio.sleep(0.3)  # Rate limiting to avoid being blocked
+                    await asyncio.sleep(0.3)
                 except Exception as e:
                     print(f"Pages {page}-{page+29}: Error fetching data: {str(e)}")
                     error_count += 1
@@ -144,7 +134,6 @@ class TrendyolQuestionScraper(Tool):
         print(f"Excel dosyası oluşturuluyor ({len(questions)} soru)...")
         
         try:
-            # Create a dataframe from the questions
             df_data = []
             for question in questions:
                 try:
@@ -183,16 +172,12 @@ class TrendyolQuestionScraper(Tool):
                 
             df = pd.DataFrame(df_data)
             
-            # Format dates if available
             for date_col in ['Soru Tarihi', 'Cevap Tarihi']:
                 if date_col in df.columns:
                     try:
-                        # Try to parse the date string or timestamp
                         df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
-                        # Format all dates to a consistent format
                         df[date_col] = df[date_col].dt.strftime('%Y-%m-%d %H:%M')
                     except Exception as e:
-                        # If there's any error in date formatting, keep as is
                         print(f"{date_col} tarih dönüştürme hatası: {str(e)}")
                         pass
             
@@ -201,10 +186,9 @@ class TrendyolQuestionScraper(Tool):
             filename = f"sorular_{content_id}_{timestamp}.xlsx"
             filepath = os.path.join(self.base_tool._temp_dir, filename)
             
-            # Save Excel to temp directory
             df.to_excel(filepath, index=False, engine='openpyxl')
             
-            # Geçici dosya olarak kaydet (30 dakika sonra otomatik silinecek)
+            # Geçici dosya olarak kaydet
             self.base_tool.register_temp_file(filepath, ttl_minutes=30)
             
             # JSON yedek olarak da kaydet
@@ -232,13 +216,11 @@ class TrendyolQuestionScraper(Tool):
         
         print(f"Trendyol soru-cevap taraması başlatılıyor: {url}")
         
-        # Extract content ID from URL
         content_id = self.extract_content_id(url)
         if not content_id:
             return "URLden ürün ID çıkarılamadı. Geçerli bir Trendyol ürün URL'si girin."
         
         try:
-            # Fetch questions
             start_time = time.time()
             questions = asyncio.run(self.scrape_questions(url))
             end_time = time.time()
@@ -249,7 +231,6 @@ class TrendyolQuestionScraper(Tool):
             if not questions:
                 return f"Bu ürün için soru bulunamadı: {url}"
                 
-            # Convert to Excel and get the filename
             excel_filename, excel_path = self.questions_to_excel(questions, url, content_id)
             
             if not excel_path:
@@ -286,7 +267,6 @@ class TrendyolQuestionScraper(Tool):
             
             result += f"\n**Dosya Adı**: {excel_filename}\n\n"
             
-            # Dosya indirme bağlantıları
             if os.environ.get('SPACE_ID'):
                 # Huggingface Spaces'te çalışıyorsa
                 space_name = os.environ.get('SPACE_ID')
