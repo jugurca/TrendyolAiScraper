@@ -63,9 +63,9 @@ class TrendyolCommentScraper(Tool):
                     "orderBy": "LastModifiedDate",
                     "channelId": 1
                 }
-
+                REVIEW = os.getenv("trendyolcomment")
                 response = scraper.get(
-                    "https://apigw.trendyol.com/discovery-web-websfxsocialreviewrating-santral/product-reviews-detailed",
+                    REVIEW,
                     headers=headers,
                     params=params
                 )
