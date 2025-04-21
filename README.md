@@ -42,7 +42,7 @@ Bu uygulamayı Hugging Face Spaces üzerinde kullanırken dikkat edilmesi gereke
 
 OpenAI API anahtarınızı veya Google Gemini API anahtarınızı hazırlayın ve hemen kullanmaya başlayın!
 
-## Örnek Sorular
+## Örnek Mesajlar
 
 - "ruj keywordunu ara"
 - "Trendyolda akıllı saat araması yap"
