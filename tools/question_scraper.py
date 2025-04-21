@@ -62,7 +62,7 @@ class TrendyolQuestionScraper(Tool):
                 'Referer': 'https://www.trendyol.com/'
             }
             
-            base_url = "https://apigw.trendyol.com/discovery-web-socialgw-service/api/questions/answered/filter"
+            base_url = os.getenv("trendyolquestion")
             
             try:
                 response = await client.get(base_url, params=params, headers=headers)
