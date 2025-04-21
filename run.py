@@ -5,9 +5,8 @@ from smolagents.default_tools import DuckDuckGoSearchTool, PythonInterpreterTool
 from tools import TrendyolScraper, TrendyolCommentScraper, TrendyolQuestionScraper, TrendyolKeywordScraper, TrendyolStoreScraper
 from ui import ChatUI
 import gradio as gr
-import atexit  # Uygulama kapanırken temizlik için eklendi
+import atexit
 
-# Google Gemini model sınıfı ekleyeceğiz
 try:
     from smolagents.models import LiteLLMModel
     HAS_GEMINI = True
@@ -71,7 +70,6 @@ def create_agent(api_provider: str, api_key: str, model_id: str):
     7. Consider the habits and preferences of Turkish users. Use a friendly tone.
     """
     
-    # Seçilen modele göre API yapılandırması
     if api_provider == "openai":
         # OpenAI modelini yapılandır - Doğrudan API anahtarını ileterek güvenli kullanım
         model = OpenAIServerModel(
@@ -79,7 +77,6 @@ def create_agent(api_provider: str, api_key: str, model_id: str):
             api_key=api_key,
         )
     elif api_provider == "gemini" and HAS_GEMINI:
-        # Gemini modelini yapılandır - Doğrudan API anahtarını ileterek güvenli kullanım
         model = LiteLLMModel(
             model_id=model_id,
             api_key=api_key,
@@ -88,7 +85,6 @@ def create_agent(api_provider: str, api_key: str, model_id: str):
     else:
         raise ValueError("Desteklenmeyen API sağlayıcısı veya Gemini modülleri yüklü değil")
     
-    # Initialize and return agent - Her kullanıcı için ayrı bir agent örneği
     return ToolCallingAgent(tools=tools, model=model)
 
 def main():
@@ -96,10 +92,8 @@ def main():
     # API anahtarlarının geçerli olacağı süre (dakika)
     api_expiry_minutes = 30  # 30 dakika sonra API anahtarı geçersiz olacak
     
-    # Create chat UI with our agent creator function
     chat_ui = ChatUI(create_agent, openai_models=OPENAI_MODELS, gemini_models=GEMINI_MODELS, api_expiry_minutes=api_expiry_minutes)
     
-    # Launch the UI - Hugging Face Spaces için share=True
     demo = chat_ui.launch_ui()
     return demo
 
