@@ -39,7 +39,7 @@ class TrendyolStoreScraper(Tool):
         """Fetch a single page of products for the given merchant and page number."""
         async with semaphore:
             # API endpoint for store products
-            api_url = 'https://apigw.trendyol.com/discovery-web-searchgw-service/v2/api/infinite-scroll/sr'
+            api_url = os.getenv("trendyolstore")
             
             params = {
                 'mid': merchant_id,
