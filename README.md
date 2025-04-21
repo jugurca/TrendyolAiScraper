@@ -1,6 +1,7 @@
 # AI Trendyol Scraping Asistanı
 
-[![Hugging Face Spaces](https://img.shields.io/badge/Hugging%20Face-Spaces-yellow)](https://huggingface.co/spaces/jugurca/TrendyolAiScraper)(https://www.linkedin.com/in/ibrahim-u%C4%9Furca-83232927b/)
+[![Hugging Face Spaces](https://img.shields.io/badge/Hugging%20Face-Spaces-yellow)](https://huggingface.co/spaces/jugurca/TrendyolAiScraper)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-View%20Profile-blue?logo=linkedin)](https://www.linkedin.com/in/ibrahim-u%C4%9Furca-83232927b/)
 
 Trendyol veri çekme işlemlerini otomatize etmek için geliştirilmiş bir yapay zeka asistanıdır. Kullanıcıların doğal dil ile iletişim kurarak Trendyol'dan ürün bilgilerini, yorumları, soruları ve mağaza verilerini çekmesine yardımcı olur.
 
