@@ -23,6 +23,3 @@ temp/
 
 # Logs
 *.log
-
-# Cursor specific
-.cursorignore 
