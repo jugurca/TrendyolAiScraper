@@ -24,12 +24,9 @@ class TrendyolCommentScraper(Tool):
     
     def __init__(self):
         super().__init__()
-        # TrendyolBaseTool sınıfının fonksiyonlarını kullanmak için
-        # tools modülünden bu sınıfı lazy import ile alıyoruz
         from tools import TrendyolBaseTool
         self.base_tool = TrendyolBaseTool()
     
-    # Function to extract content ID from the URL
     def extract_content_id(self, url: str) -> Optional[str]:
         match = re.search(r'p-(\d+)', url)
         if match:
@@ -37,12 +34,10 @@ class TrendyolCommentScraper(Tool):
         else:
             return None
     
-    # Function to fetch product reviews
     def fetch_reviews(self, content_id: str, max_pages: int = 300):
-        # Cloudscraper oluştur
+
         scraper = cloudscraper.create_scraper()
         
-        # Header'lar
         headers = {
             "user-agent": "Mozilla/5.0",
             "accept": "application/json, text/plain, */*",
@@ -105,7 +100,6 @@ class TrendyolCommentScraper(Tool):
         print(f"Excel dosyası oluşturuluyor ({len(reviews)} yorum)...")
             
         try:
-            # Create a dataframe from the reviews
             df_data = []
             for review in reviews:
                 try:
@@ -121,15 +115,12 @@ class TrendyolCommentScraper(Tool):
                         'Beğeni Sayısı': review.get('reviewLikeCount', 0),
                     }
                     
-                    # Satıcı bilgisi
                     if 'sellerName' in review:
                         row['Satıcı'] = review.get('sellerName', '')
                     
-                    # Elite veya Influencer kullanıcı mı?
                     row['Elite Kullanıcı'] = review.get('isElite', False)
                     row['Influencer Kullanıcı'] = review.get('isInfluencer', False)
                     
-                    # Medya dosyaları var mı?
                     if 'mediaFiles' in review and review['mediaFiles']:
                         try:
                             media_urls = [media.get('url', '') for media in review['mediaFiles'] if media.get('url')]
@@ -140,7 +131,6 @@ class TrendyolCommentScraper(Tool):
                             row['Medya URL'] = ''
                             row['Medya Sayısı'] = 0
                         
-                    # Ürün özellikleri
                     if 'productAttributes' in review and review['productAttributes']:
                         try:
                             attr_text = []
@@ -159,7 +149,6 @@ class TrendyolCommentScraper(Tool):
                 
             df = pd.DataFrame(df_data)
             
-            # Format dates if available
             if 'Tarih' in df.columns:
                 try:
                     # Önce Türkçe tarih formatlarını kontrol et (örn: "19 Şubat 2025")
@@ -169,22 +158,18 @@ class TrendyolCommentScraper(Tool):
                         'Eylül': '09', 'Ekim': '10', 'Kasım': '11', 'Aralık': '12'
                     }
                     
-                    # Tarih sütununu işle
                     parsed_dates = []
                     for date_str in df['Tarih']:
                         try:
-                            # Eğer bu bir Türkçe tarih formatı ise (19 Şubat 2025)
                             if isinstance(date_str, str) and any(month in date_str for month in turkish_months):
                                 for month_name, month_num in turkish_months.items():
                                     if month_name in date_str:
-                                        # "19 Şubat 2025" -> "19-02-2025"
                                         date_str = date_str.replace(month_name, month_num)
                                         day, month, year = date_str.split()
                                         parsed_date = f"{year}-{month}-{day.zfill(2)}"
                                         parsed_dates.append(parsed_date)
                                         break
                             else:
-                                # Timestamp olabilir
                                 if pd.notna(date_str) and not isinstance(date_str, str):
                                     try:
                                         # Unix timestamp'i milisaniye olarak kabul et
@@ -197,13 +182,10 @@ class TrendyolCommentScraper(Tool):
                         except:
                             parsed_dates.append(None)
                     
-                    # Dönüştürülmüş tarihleri ata
                     df['Tarih'] = parsed_dates
                     
-                    # Herhangi bir eksik değer için yeniden deneme yap
                     mask = df['Tarih'].isna()
                     if mask.any():
-                        # Tarih formatını belirterek dönüştürmeyi dene
                         df.loc[mask, 'Tarih'] = pd.to_datetime(
                             df.loc[mask, 'Tarih'], 
                             format='%Y-%m-%d', 
@@ -217,7 +199,6 @@ class TrendyolCommentScraper(Tool):
             filename = f"yorumlar_{content_id}_{timestamp}.xlsx"
             filepath = os.path.join(self.base_tool._temp_dir, filename)
             
-            # Save to Excel
             df.to_excel(filepath, index=False, engine='openpyxl')
             
             # Geçici dosya olarak kaydet (30 dakika sonra otomatik silinecek)
@@ -248,13 +229,11 @@ class TrendyolCommentScraper(Tool):
         
         print(f"Trendyol yorum taraması başlatılıyor: {url}")
         
-        # Extract content ID from URL
         content_id = self.extract_content_id(url)
         if not content_id:
             return "URLden ürün ID çıkarılamadı. Geçerli bir Trendyol ürün URL'si girin."
         
         try:
-            # Fetch reviews
             start_time = time.time()
             reviews = self.fetch_reviews(content_id)
             end_time = time.time()
@@ -262,7 +241,6 @@ class TrendyolCommentScraper(Tool):
             if not reviews:
                 return f"Bu ürün için yorum bulunamadı: {url}"
                 
-            # Convert to Excel and get the filename
             excel_filename, excel_path = self.reviews_to_excel(reviews, url, content_id)
             
             if not excel_path:
@@ -312,7 +290,6 @@ class TrendyolCommentScraper(Tool):
             
             result += f"**Dosya Adı**: {excel_filename}\n\n"
             
-            # Dosya indirme bağlantıları
             if os.environ.get('SPACE_ID'):
                 # Huggingface Spaces'te çalışıyorsa
                 space_name = os.environ.get('SPACE_ID')
